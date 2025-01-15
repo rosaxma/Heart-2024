@@ -1,0 +1,108 @@
+Celltype	nFrag	scE2G	BPNet	NMF_label	Plot_label	HexColorCode	CellGroupingOrder	CelltypeOrder	Order	New_Name	CelltypeColor	CardiacCellType	ConsiderForCellTypeEnrichment	CellTypeEnrichmentGrouping	CellEnrichmentGroupingColor	ConsiderForVariantOverlapping	Include_in_UMAP_main	Include_in_UMAP_Supp
+ACM_left_trabecular_1	43264374	TRUE	TRUE	ACM	ACM	#7ec0ee	1	1	1	ACM_left_highTNNI_1	#87CEEB	TRUE	TRUE	ACM	#FF8040	TRUE	TRUE	TRUE
+ACM_left_trabecular_2	22769486	TRUE	TRUE	ACM	ACM	#7ec0ee	1	2	2	ACM_left_highTNNI_2	#000080	TRUE	TRUE	ACM	#FF8040	TRUE	TRUE	TRUE
+ACM_left_hybrid	30217925	TRUE	TRUE	ACM	ACM	#7ec0ee	1	3	3	ACM_left_hybrid	#4169E1	TRUE	TRUE	ACM	#FF8040	TRUE	TRUE	TRUE
+ACM_left_compact	24369138	TRUE	TRUE	ACM	ACM	#7ec0ee	1	4	4	ACM_left_lowTNNI	#00FF00	TRUE	TRUE	ACM	#FF8040	TRUE	TRUE	TRUE
+ACM_right_trabecular_1	50833936	TRUE	TRUE	ACM	ACM	#7ec0ee	1	5	5	ACM_right_highTNNI_1	#228B22	TRUE	TRUE	ACM	#FF8040	TRUE	TRUE	TRUE
+ACM_right_trabecular_2	18628587	TRUE	TRUE	ACM	ACM	#7ec0ee	1	6	6	ACM_right_highTNNI_2	#96DED1	TRUE	TRUE	ACM	#FF8040	TRUE	TRUE	TRUE
+ACM_right_compact_1	28367920	TRUE	TRUE	ACM	ACM	#7ec0ee	1	7	7	ACM_right_lowTNNI_1	#DFB9EE	TRUE	TRUE	ACM	#FF8040	TRUE	TRUE	TRUE
+ACM_right_compact_2	12908596	TRUE	TRUE	ACM	ACM	#7ec0ee	1	8	8	ACM_right_lowTNNI_2	#CA2C92	TRUE	TRUE	ACM	#FF8040	TRUE	TRUE	TRUE
+ACM_right_compact_3	7584630	TRUE	TRUE	ACM	ACM	#7ec0ee	1	9	9	ACM_right_lowTNNI_3	#B666D2	TRUE	TRUE	ACM	#FF8040	TRUE	TRUE	TRUE
+ACM_cellcycle	93559631	TRUE	FALSE	ACM	ACM	#7ec0ee	1	10	10	ACM_cell_cycling	#813695	TRUE	FALSE			FALSE	TRUE	TRUE
+VCM_left_trabecular_1	227743892	TRUE	TRUE	VCM	VCM	#F0E68C	2	1	11	VCM_left_trabecular_1	#87CEEB	TRUE	TRUE	VCM	#0000FF	TRUE	TRUE	TRUE
+VCM_left_trabecular_2	144276817	TRUE	TRUE	VCM	VCM	#F0E68C	2	2	12	VCM_left_trabecular_2	#000080	TRUE	TRUE	VCM	#0000FF	TRUE	TRUE	TRUE
+VCM_left_trabecular_3	120407284	TRUE	TRUE	VCM	VCM	#F0E68C	2	3	13	VCM_left_trabecular_3	#4169E1	TRUE	TRUE	VCM	#0000FF	TRUE	TRUE	TRUE
+VCM_left_hybrid	342133374	TRUE	TRUE	VCM	VCM	#F0E68C	2	4	14	VCM_left_hybrid	#00FF00	TRUE	TRUE	VCM	#0000FF	TRUE	TRUE	TRUE
+VCM_left_compact_1	210929468	TRUE	TRUE	VCM	VCM	#F0E68C	2	5	15	VCM_left_compact_1	#228B22	TRUE	TRUE	VCM	#0000FF	TRUE	TRUE	TRUE
+VCM_left_compact_2	232034640	TRUE	TRUE	VCM	VCM	#F0E68C	2	6	16	VCM_left_compact_2	#96DED1	TRUE	TRUE	VCM	#0000FF	TRUE	TRUE	TRUE
+VCM_left_compact_3	216472884	TRUE	TRUE	VCM	VCM	#F0E68C	2	7	17	VCM_left_compact_3	#DFB9EE	TRUE	TRUE	VCM	#0000FF	TRUE	TRUE	TRUE
+VCM_right_trabecular	77025062	TRUE	TRUE	VCM	VCM	#F0E68C	2	8	18	VCM_right_trabecular	#CA2C92	TRUE	TRUE	VCM	#0000FF	TRUE	TRUE	TRUE
+VCM_right_compact	277153849	TRUE	TRUE	VCM	VCM	#F0E68C	2	9	19	VCM_right_compact	#FFA1D3	TRUE	TRUE	VCM	#0000FF	TRUE	TRUE	TRUE
+VCM_AV_valve	7859450	TRUE	TRUE	VCM	VCM	#F0E68C	2	10	20	AV_valve_CM	#FFFF00	TRUE	TRUE	VCM	#0000FF	TRUE	TRUE	TRUE
+VCM_cellcycle	489622869	TRUE	FALSE	VCM	VCM	#F0E68C	2	11	21	VCM_cell_cycling	#5A2A65	TRUE	FALSE			FALSE	TRUE	TRUE
+SAN_head	4851308	TRUE	TRUE	CoreConductionCells	CoreConductionCells	#DA70D6	3	1	22	Sinoatrial_node	#87CEEB	TRUE	TRUE	ConductionCells	#006400	TRUE	TRUE	TRUE
+AV_node	11577043	TRUE	TRUE	CoreConductionCells	CoreConductionCells	#DA70D6	3	2	23	AV_node	#000080	TRUE	TRUE	ConductionCells	#006400	TRUE	TRUE	TRUE
+AV_bundle	4007874	TRUE	TRUE	CoreConductionCells	CoreConductionCells	#DA70D6	3	3	24	AV_bundle	#4169E1	TRUE	TRUE	ConductionCells	#006400	TRUE	TRUE	TRUE
+PF_1	4481707	TRUE	TRUE	TzConductionCells	TzConductionCells	#7B68EE	4	4	30	Purkinje_fibers_3	#00FF00	TRUE	TRUE	TzConductionCells	#0000FF	TRUE	TRUE	TRUE
+PF_2	9112170	TRUE	TRUE	CoreConductionCells	CoreConductionCells	#DA70D6	3	5	26	Purkinje_fibers_2	#228B22	TRUE	TRUE	ConductionCells	#006400	TRUE	TRUE	TRUE
+PF_3	8212080	TRUE	TRUE	CoreConductionCells	CoreConductionCells	#DA70D6	3	6	25	Purkinje_fibers_1	#96DED1	TRUE	TRUE	TzConductionCells	#0000FF	TRUE	TRUE	TRUE
+SAN_Tz	6840518	TRUE	TRUE	TzConductionCells	TzConductionCells	#7B68EE	4	1	27	Sinoatrial_transition_cells	#dccd10	TRUE	TRUE	ACM	#FF8040	TRUE	TRUE	TRUE
+AV_Tz	21821166	TRUE	TRUE	TzConductionCells	TzConductionCells	#7B68EE	4	2	28	AV_node_transitional_cells	#FFFF00	TRUE	TRUE	VCM	#0000FF	TRUE	TRUE	TRUE
+AV_bundle_Tz	26258642	TRUE	TRUE	TzConductionCells	TzConductionCells	#7B68EE	4	3	29	AV_bundle_transitional_cells	#A67202	TRUE	TRUE	VCM	#0000FF	TRUE	TRUE	TRUE
+PF_Tz	5003719	TRUE	TRUE	TzConductionCells	TzConductionCells	#7B68EE	4	4	31	Purkinje_fibers_transitional_cells_1	#DFB9EE	TRUE	TRUE	VCM	#0000FF	TRUE	TRUE	TRUE
+VCM_transition	248681741	TRUE	TRUE	TzConductionCells	TzConductionCells	#7B68EE	4	5	32	VCM_conduction_transitional_cells	#CA2C92	TRUE	TRUE	VCM	#0000FF	TRUE	TRUE	TRUE
+SAN_cellcycle	1157428	FALSE	FALSE	TzConductionCells	TzConductionCells	#7B68EE	4	5	33	Sinoatrial_node_cell_cycling	#B666D2	TRUE	FALSE			FALSE	TRUE	TRUE
+PF_cellcycle	909407	FALSE	FALSE	TzConductionCells	TzConductionCells	#7B68EE	4	6	34	Purkinje_fibers_cell_cycling	#813695	TRUE	FALSE			FALSE	TRUE	TRUE
+Endocardial_VentricularEC_1	68605210	TRUE	TRUE	Endocardial_endothelial	EndocardialCells	#00FF00	5	1	35	Ventricular_endocardial_cells_1	#87CEEB	TRUE	TRUE	Endocardial	#FFB3FC	TRUE	TRUE	TRUE
+Endocardial_VentricularEC_2	38503449	TRUE	TRUE	Endocardial_endothelial	EndocardialCells	#00FF00	5	2	36	Ventricular_endocardial_cells_2	#000080	TRUE	TRUE	Endocardial	#FFB3FC	TRUE	TRUE	TRUE
+Endocardial_VentricularEC_3	60859627	TRUE	TRUE	Endocardial_endothelial	EndocardialCells	#00FF00	5	3	37	Ventricular_endocardial_cells_3	#4169E1	TRUE	TRUE	Endocardial	#FFB3FC	TRUE	TRUE	TRUE
+Endocardial_AtrialEC	19501055	TRUE	TRUE	Endocardial_endothelial	EndocardialCells	#00FF00	5	4	38	Atrial_endocardial_cells	#00FF00	TRUE	TRUE	Endocardial	#FFB3FC	TRUE	TRUE	TRUE
+Endocardial_AtrialSeptumEC_endocardial	6287045	TRUE	TRUE	Endocardial_endothelial	EndocardialCells	#00FF00	5	5	39	Atrial_septum_endocardial_cells	#228B22	TRUE	TRUE	Endocardial	#FFB3FC	TRUE	TRUE	TRUE
+Endocardial_IFT_VEC	24232006	TRUE	TRUE	Endocardial_endothelial	EndocardialCells	#00FF00	5	6	40	IFT_valvular_endocardial_cells	#96DED1	TRUE	TRUE	Endocardial	#FFB3FC	TRUE	TRUE	TRUE
+Endocardial_to_endothelial	5491716	TRUE	TRUE	Endocardial_endothelial	EndocardialCells	#00FF00	5	6	42	Endocardial_to_endothelial_transtition	#813695	TRUE	TRUE	Endocardial	#FFB3FC	TRUE	TRUE	TRUE
+Endocardial_OFT_VEC	32853377	TRUE	TRUE	Endocardial_endothelial	EndocardialCells	#00FF00	5	7	41	OFT_valvular_endocardial_cells	#FFFF00	TRUE	TRUE	Endocardial	#FFB3FC	TRUE	TRUE	TRUE
+Endocaridal_AorticEC_endothelial	7972253	TRUE	TRUE	Endocardial_endothelial	EndocardialCells	#00FF00	5	9	49	Aortic_endothelial_cells_1	#A67202	TRUE	TRUE	Endothelial	#93E9BE	TRUE	TRUE	TRUE
+Endocardial_cellcycle	20381250	TRUE	FALSE	Endocardial_endothelial	EndocardialCells	#00FF00	5	10	52	Endocardial_cell_cycling	#DFB9EE	TRUE	FALSE			FALSE	TRUE	TRUE
+Endothelial_CapEC_endo	28701175	TRUE	TRUE	Endocardial_endothelial	EndothelialCells	#FF7F00	6	2	45	Capillary_endothelial_cells_2	#ff1493	TRUE	TRUE	Endothelial	#93E9BE	TRUE	TRUE	TRUE
+Endothelial_CapEC_SV	22230918	TRUE	TRUE	Endocardial_endothelial	EndothelialCells	#FF7F00	6	1	44	Capillary_endothelial_cells_1	#00CED1	TRUE	TRUE	Endothelial	#93E9BE	TRUE	TRUE	TRUE
+Endothelial_ArtEC_preArtery_2	8218072	TRUE	TRUE	Endocardial_endothelial	EndothelialCells	#FF7F00	6	3	46	Pre_arterial_endothelial_cells_1	#228B22	TRUE	TRUE	Endothelial	#93E9BE	TRUE	TRUE	TRUE
+Endothelial_ArtEC_preArtery_1	9561743	TRUE	TRUE	Endocardial_endothelial	EndothelialCells	#FF7F00	6	4	47	Pre_arterial_endothelial_cells_2	#8B8B02	TRUE	TRUE	Endothelial	#93E9BE	TRUE	TRUE	TRUE
+Endothelial_ArtEC_mature	11608339	TRUE	TRUE	Endocardial_endothelial	EndothelialCells	#FF7F00	6	5	48	Mature_arterial_endothelial	#FFA1D3	TRUE	TRUE	Endothelial	#93E9BE	TRUE	TRUE	TRUE
+Endothelial_AorticEC_endothelial	2430479	FALSE	FALSE	Endocardial_endothelial	EndothelialCells	#FF7F00	6	6	50	Aortic_endothelial_cells_2	#FF7F00	TRUE	TRUE	Endothelial	#93E9BE	FALSE	TRUE	TRUE
+Endothelial_VeinEC	8121080	TRUE	TRUE	Endocardial_endothelial	EndothelialCells	#FF7F00	6	7	43	Venous_endothelial_cells	#B666D2	TRUE	TRUE	Endothelial	#93E9BE	TRUE	TRUE	TRUE
+Endothelial_LymphaticEC	9201969	TRUE	TRUE	Lymphatic_EC	EndothelialCells	#FF7F00	6	8	55	Lymphatic_endothelial_cells	#4682B4	TRUE	TRUE	Endothelial	#93E9BE	TRUE	TRUE	TRUE
+Endothelial_cellcycle_1	18044625	TRUE	FALSE	Endocardial_endothelial	EndothelialCells	#FF7F00	6	9	53	Endothelial_cell_cycling_1	#5A2A65	TRUE	FALSE			FALSE	TRUE	TRUE
+Endothelial_cellcycle_2	4398616	TRUE	FALSE	Endocardial_endothelial	EndothelialCells	#FF7F00	6	10	54	Endothelial_cell_cycling_2	#7B68EE	TRUE	FALSE			FALSE	TRUE	TRUE
+Endothelial_LymphaticEC_cellcycle	2197543	FALSE	FALSE	Lymphatic_EC	EndothelialCells	#FF7F00	6	11	55	Lymphatic_endothelial_cell_cycling	#CA2C92	TRUE	FALSE			FALSE	TRUE	TRUE
+CFB_progenitors	60128283	TRUE	TRUE	FB	Fibroblasts	#8B8B02	7	1	56	Cardiac_fibroblast_progenitors	#87CEEB	TRUE	TRUE	Fibroblast	#87CEEB	TRUE	TRUE	TRUE
+CFB_mature	199365767	TRUE	TRUE	FB	Fibroblasts	#8B8B02	7	2	57	Mature_fibroblasts	#000080	TRUE	TRUE	Fibroblast	#87CEEB	TRUE	TRUE	TRUE
+CFB_atrium	37308368	TRUE	TRUE	FB	Fibroblasts	#8B8B02	7	3	58	Atrial_fibroblasts	#4169E1	TRUE	TRUE	Fibroblast	#87CEEB	TRUE	TRUE	TRUE
+CFB_DMP_1	69679441	TRUE	TRUE	FB	Fibroblasts	#8B8B02	7	4	59	DMP_1	#00FF00	TRUE	TRUE	SHF_derived_cells	#00FF00	TRUE	TRUE	TRUE
+CFB_DMP_2	26713047	TRUE	TRUE	FB	Fibroblasts	#8B8B02	7	5	60	DMP_2	#228B22	TRUE	TRUE	SHF_derived_cells	#00FF00	TRUE	TRUE	TRUE
+CFB_DMP_3	14731263	TRUE	TRUE	FB	Fibroblasts	#8B8B02	7	6	61	DMP_3	#96DED1	TRUE	TRUE	SHF_derived_cells	#00FF00	TRUE	TRUE	TRUE
+CFB_OFT_1	11886985	TRUE	TRUE	FB	Fibroblasts	#8B8B02	7	7	62	OFT_1	#dccd10	TRUE	TRUE	SHF_derived_cells	#00FF00	TRUE	TRUE	TRUE
+CFB_OFT_2	10735821	TRUE	TRUE	FB	Fibroblasts	#8B8B02	7	8	63	OFT_2	#FFFF00	TRUE	TRUE	SHF_derived_cells	#00FF00	TRUE	TRUE	TRUE
+CFB_OFT_3	3268434	TRUE	TRUE	FB	Fibroblasts	#8B8B02	7	9	64	OFT_3	#A67202	TRUE	TRUE	SHF_derived_cells	#00FF00	TRUE	TRUE	TRUE
+VIC_free_segments_1	20320280	TRUE	TRUE	FB	Fibroblasts	#8B8B02	7	10	65	VIC_valve_free_segments_1	#5A2A65	TRUE	TRUE	CardiacValveMesenchymes	#00FFFF	TRUE	TRUE	TRUE
+VIC_free_segments_2	18086733	TRUE	TRUE	FB	Fibroblasts	#8B8B02	7	11	66	VIC_valve_free_segments_2	#CA2C92	TRUE	TRUE	CardiacValveMesenchymes	#00FFFF	TRUE	TRUE	TRUE
+VIC_free_segments_3	14487671	TRUE	TRUE	FB	Fibroblasts	#8B8B02	7	12	67	VIC_valve_free_segments_3	#B666D2	TRUE	TRUE	CardiacValveMesenchymes	#00FFFF	TRUE	TRUE	TRUE
+VIC_NC_derived_mescenchyme	14894352	TRUE	TRUE	FB	Fibroblasts	#8B8B02	7	13	68	VIC_derived_from_neural_crest	#813695	TRUE	TRUE	CardiacValveMesenchymes	#00FFFF	TRUE	TRUE	TRUE
+VIC_valve_roots	9141543	TRUE	TRUE	FB	Fibroblasts	#8B8B02	7	14	69	VIC_semilunar_valves	#DFB9EE	TRUE	TRUE	CardiacValveMesenchymes	#00FFFF	TRUE	TRUE	TRUE
+FB_cellcycle	90749341	TRUE	FALSE	FB	Fibroblasts	#8B8B02	7	15	70	Mesenchymal_cell_cycling	#FFA1D3	TRUE	FALSE			FALSE	TRUE	TRUE
+Pericytes_1	40139028	TRUE	TRUE	MuralCells	MuralCells	#00CED1	8	1	71	Pericytes_1	#87CEEB	TRUE	TRUE	Pericytes	#FFD700	TRUE	TRUE	TRUE
+Pericytes_2	27696983	TRUE	TRUE	MuralCells	MuralCells	#00CED1	8	2	72	Pericytes_2	#000080	TRUE	TRUE	Pericytes	#FFD700	TRUE	TRUE	TRUE
+Pericytes_3	9059001	TRUE	TRUE	MuralCells	MuralCells	#00CED1	8	3	73	Pericytes_3	#4169E1	TRUE	TRUE	Pericytes	#FFD700	TRUE	TRUE	TRUE
+SMC_1	32804855	TRUE	TRUE	MuralCells	MuralCells	#00CED1	8	4	74	Smooth_muscle_cells_1	#00FF00	TRUE	TRUE	SMC	#FFD700	TRUE	TRUE	TRUE
+SMC_2	5761331	TRUE	TRUE	MuralCells	MuralCells	#00CED1	8	5	75	Smooth_muscle_cells_2	#228B22	TRUE	TRUE	SMC	#FFD700	TRUE	TRUE	TRUE
+SMC_3	2348927	FALSE	FALSE	MuralCells	MuralCells	#00CED1	8	6	76	Smooth_muscle_cells_3	#96DED1	TRUE	TRUE	SMC	#FFD700	FALSE	TRUE	TRUE
+Pericytes_cellcycle	1435252	FALSE	FALSE	MuralCells	MuralCells	#00CED1	8	7	77	Pericytes_cell_cycling	#dccd10	TRUE	FALSE			FALSE	TRUE	TRUE
+SMC_cellcycle	7809536	TRUE	FALSE	MuralCells	MuralCells	#00CED1	8	8	78	Smooth_muscle_cells_cell_cycling	#FFFF00	TRUE	FALSE			FALSE	TRUE	TRUE
+Epicardial_0	19210256	TRUE	TRUE	Epicardial	EpicardialCells	#FFD700	9	1	79	Epicardial_1	#00CED1	TRUE	TRUE	Epicardial	#8B4513	TRUE	TRUE	TRUE
+Epicardial_1	4513098	TRUE	TRUE	Epicardial	EpicardialCells	#FFD700	9	2	80	Epicardial_2	#ff1493	TRUE	TRUE	Epicardial	#8B4513	TRUE	TRUE	TRUE
+Epicardial_3	5890712	TRUE	TRUE	Epicardial	EpicardialCells	#FFD700	9	3	81	Epicardial_3	#FF7F00	TRUE	TRUE	Epicardial	#8B4513	TRUE	TRUE	TRUE
+Epicardial_4	2183546	FALSE	FALSE	Epicardial	EpicardialCells	#FFD700	9	4	82	Epicardial_4	#8B8B02	TRUE	TRUE	Epicardial	#8B4513	FALSE	TRUE	TRUE
+Epicardial_5	2255815	FALSE	FALSE	Epicardial	EpicardialCells	#FFD700	9	5	83	Epicardial_5	#FFCDA2	TRUE	TRUE	Epicardial	#8B4513	FALSE	TRUE	TRUE
+Epicardial_cellcycle	1909399	FALSE	FALSE	Epicardial	EpicardialCells	#FFD700	9	6	84	Epicardial_cell_cycling	#4682B4	TRUE	FALSE			FALSE	TRUE	TRUE
+NC_progenitor	17042080	TRUE	TRUE	NC	NeuralCrestCells	#ff1493	10	1	85	Neural_crest_derived_cells	#87CEEB	TRUE	TRUE	NeuralCrest	#ff1493	TRUE	TRUE	TRUE
+SympatheticNeuron_nonadrenergic	4975016	TRUE	TRUE	NC	AutonomicNeurons	#0000ff	11	1	86	Sympathetic_neuron	#000080	TRUE	TRUE	Neurons	#FDBF6F	TRUE	TRUE	TRUE
+SympatheticNeuron	14893780	TRUE	TRUE	NC	AutonomicNeurons	#0000ff	11	2	87	Parasympathetic_neuron	#4169E1	TRUE	TRUE	Neurons	#FDBF6F	TRUE	TRUE	TRUE
+Immune_T_cell_1	14520962	TRUE	FALSE	ImmuneCells	LymphoidCells	#FB9A99	12	1	88	T_cells_1	#87CEEB	FALSE	FALSE			FALSE	TRUE	TRUE
+Immune_T_cell_2	8692346	TRUE	FALSE	ImmuneCells	LymphoidCells	#FB9A99	12	2	89	T_cells_2	#000080	FALSE	FALSE			FALSE	TRUE	TRUE
+Immune_T_cell_3	4548391	TRUE	FALSE	ImmuneCells	LymphoidCells	#FB9A99	12	3	90	T_cells_3	#4169E1	FALSE	FALSE			FALSE	TRUE	TRUE
+Immune_T_cell_4	2542383	FALSE	FALSE	ImmuneCells	LymphoidCells	#FB9A99	12	4	91	T_cells_4	#00FF00	FALSE	FALSE			FALSE	TRUE	TRUE
+Immune_NK_cell	3955625	TRUE	FALSE	ImmuneCells	LymphoidCells	#FB9A99	12	5	92	NK_cells	#228B22	FALSE	FALSE			FALSE	TRUE	TRUE
+Immune_B_cell	3243008	TRUE	FALSE	ImmuneCells	LymphoidCells	#FB9A99	12	6	93	B_cells	#96DED1	FALSE	FALSE			FALSE	TRUE	TRUE
+Immune_T_cell_cellcycle_2	12978043	TRUE	FALSE	ImmuneCells	LymphoidCells	#FB9A99	12	7	94	T_cells_cell_cycling_2	#dccd10	FALSE	FALSE			FALSE	TRUE	TRUE
+Immune_T_cell_cellcycle_1	26125464	TRUE	FALSE	ImmuneCells	LymphoidCells	#FB9A99	12	8	95	T_cells_cell_cycling_1	#FFFF00	FALSE	FALSE			FALSE	TRUE	TRUE
+Immune_monocyte_1	33053821	TRUE	TRUE	ImmuneCells	MyeloidCells	#4682B4	13	1	96	Macrophages_1	#A67202	TRUE	TRUE	Macrophages	#D2042D	TRUE	TRUE	TRUE
+Immune_monocyte_2	6730029	TRUE	TRUE	ImmuneCells	MyeloidCells	#4682B4	13	2	97	Macrophages_2	#DFB9EE	TRUE	TRUE	Macrophages	#D2042D	TRUE	TRUE	TRUE
+Macrophage	4545714	TRUE	TRUE	ImmuneCells	MyeloidCells	#4682B4	13	3	98	Macrophages_3	#CA2C92	TRUE	TRUE	Macrophages	#D2042D	TRUE	TRUE	TRUE
+Immune_monocyte_cellcycle	3417212	TRUE	FALSE	ImmuneCells	MyeloidCells	#4682B4	13	4	99	Macrophages_cell_cycling	#B666D2	FALSE	FALSE			FALSE	TRUE	TRUE
+Immune_mast_cell	3670556	TRUE	FALSE	ImmuneCells	MyeloidCells	#4682B4	13	5	100	Mast_cells	#813695	FALSE	FALSE			FALSE	TRUE	TRUE
+SchwannCells_precursors	15973841	FALSE	FALSE	NC	NonCardiacCells	#999999	14	1	101	Lung_epithelium		FALSE	FALSE			FALSE	FALSE	TRUE
+SchwannCells_premyelinating_1	9121080	FALSE	FALSE	NC	NonCardiacCells	#999999	14	2	102	Lung_epithelium		FALSE	FALSE			FALSE	FALSE	TRUE
+SchwannCells_premyelinating_2	7542585	FALSE	FALSE	NC	NonCardiacCells	#999999	14	3	103	Lung_epithelium		FALSE	FALSE			FALSE	FALSE	TRUE
+SchwannCells_premyelinating_3	5916101	FALSE	FALSE	NC	NonCardiacCells	#999999	14	4	104	Lung_epithelium		FALSE	FALSE			FALSE	FALSE	TRUE
+CNC_PAA	40940800	FALSE	FALSE	NC	NonCardiacCells	#999999	14	5	105	Thymic_epithelium		FALSE	FALSE			FALSE	FALSE	TRUE
+Endothelial_LiverSinusoidalEC	626425	FALSE	FALSE	Endocardial_endothelial	NonCardiacCells	#999999	14	6	106	Liver_sinusoidal_endothelial_cells		FALSE	FALSE			FALSE	FALSE	TRUE
+Endothelial_VeinEC_pulmonary	2191815	FALSE	FALSE	Endocardial_endothelial	NonCardiacCells	#999999	14	7	107	Pulmonary_endothelial_cells	#FFCDA2	FALSE	FALSE			FALSE	FALSE	TRUE
