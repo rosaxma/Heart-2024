@@ -22,7 +22,7 @@ All the snakemake pipelines were designed to be run on an HPC platform, [Sherloc
 
 ## scRNA-seq quality control and normalization
   ### RNA_QC_Snakemake
-  The directory contain code for qualtiy control the scRNA-seq using the outputs from [ambient RNA removal](#cellbender_snakemake)
+  The directory contains code for generating the necessary QC metrics of scRNA-seq using the outputs from [ambient RNA removal](#cellbender_snakemake). 
   ### Normalization_Snakemake
   
 ## Doublet removal
