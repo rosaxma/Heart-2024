@@ -1,24 +1,28 @@
 # Analysis code for *Molecular convergence of risk variants for congenital heart defects leveraging a regulatory map of the human fetal heart*
-
+All the snakemake pipelines were designed to be run on an HPC platform, [Sherlock](https://www.sherlock.stanford.edu) specifically. The config files are located in \[dir\]/config
 ## envrionments
   ### environment for snakemake runs:
-      envs/snakemake.yml 
+  envs/snakemake.yml 
   ### enivronemnt for running R scripts:
-      envs/R.yml
+  envs/R.yml
 
-## scRNA-seq alignment and background removal
+## scRNA-seq alignment and background removal and Sample demultiplexing
   ### RNA_alignment_snakemake
-      The repo
-  ### CellBender_Snakemake
+  This directory contains code for aligning FASTQ files of the RNA portion of multiomic sequencing to a reference assembly using [Starsolo](https://github.com/alexdobin/STAR/blob/master/docs/STARsolo.md) and demultiplexing samples using [Souporcell](https://github.com/wheaton5/souporcell). The input sample table requires information about the location of the FASTQ files, the name of the library as appeared in the FASTQ filenames, and the number of samples mixed in the library. 
+  ### CellBender_Snakemake 
+  This directory contains code for removing ambient RNA (background) using CellBender. 
   
 ## scATAC-seq alignment
-  ### scATAC_pipeline_lite 
+  ### scATAC_pipeline_lite
+  This directory contains code for aligning FASTQ files of the ATAC portion of multiomic sequencing to a reference assembly. The code base was forked from https://github.com/austintwang/scATAC_pipeline_lite (commit: 76a4bc545318b5685eb9843e94000dde0d3394e7) with modifications for file and result organization. 
 
 ## scATAC-seq quality control
   ### multiomic_ATAC_QC_Snakemake
+  The directory contains code for quality control the scATAC-seq portion of the multiome libraries. As shown in the config file, the default filters are minTSS >= 6, and minFrags >= 1000, unless otherwise specified in the sample sheet. Only cells considered to be valid by Starsolo were considered. 
 
 ## scRNA-seq quality control and normalization
   ### RNA_QC_Snakemake
+  The directory contain code for qualtiy control the scRNA-seq using the outputs from [ambient RNA removal](#cellbender_snakemake)
   ### Normalization_Snakemake
   
 ## Doublet removal
