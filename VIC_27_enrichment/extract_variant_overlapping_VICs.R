@@ -8,7 +8,7 @@ causal_genes <- read.table("config/combined_disease_causal_genes.tsv", header=T,
 message("number of target genes from the valve loci")
 v2g <- fread("config/combined_Credibleset_gene_variant_info_E2G_with_info_allV2G.tsv", header=T, sep="\t", stringsAsFactors=F) %>% select(Trait, CredibleSet, GEP, TargetGene,Celltype)  %>% distinct() %>% separate_longer_delim(GEP, "|") %>% filter(str_detect(Celltype, "VIC")) %>% filter(Trait %in% valve_traits)
 
-gep_list=c("FB_GEP_27")
+gep_list=c("VIC_GEP_27")
 for (gep in gep_list){
 V2G=v2g %>% pull(TargetGene) %>% unique()
 V2G_G2P=v2g %>% filter(GEP==gep) %>% pull(TargetGene) %>% unique()

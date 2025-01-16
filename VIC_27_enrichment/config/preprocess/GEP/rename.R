@@ -1,0 +1,6 @@
+library(tidyverse)
+library(data.table)
+df <- read.table("top_gene_meta_long.tsv", header=T, sep="\t", stringsAsFactors=F)
+rename <- read.table("rename.tsv", header=T, sep="\t", stringsAsFactors=F)
+df <- df %>% left_join(rename, by=c("GEP"="Old")) %>% mutate(GEP=ifelse(!is.na(New), New, GEP)) %>% select(-New)
+write.table(df, "../../top_gene_meta_long.tsv", sep="\t", quote=F, row.names=F)
