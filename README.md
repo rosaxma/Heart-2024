@@ -28,35 +28,44 @@ All the snakemake pipelines were designed to be run on an HPC platform, [Sherloc
   
 ## Doublet removal
   ### Doublet_removal_Snakemake
-  This directory contains code for rerunning Scrublet if specified in the 
+  This directory contains code for rerunning Scrublet if specified in the SampleSheet ("Doublet_threshold" != "Default"), removing the union of doublets identified by Scrublet, [Archr](#multiomic_atac_qc_Snakemake), [Amulet](#multiomic_atac_qc_Snakemake), and [Souporcell])(#rna_alignment_snakemake). 
 ## Clustering and cell type annotation
   ### evaluation_Snakemake
+  This directory contain code for merging filtered Seurat object, normalizing the resulting count matrix and clustering at various population. It also generates heatmaps that reflect the marker gene expressions in the clusters and tentatively labeling clusters by mapping the clusters to previous annotations. 
   ### clustering_Snakemake
+  This directory contains code for performing clustering on each major cell type group. The code performs count spliting, normalizing and clustering of the training dataset at various resolutions, and label the test dataset with the clustering of the training set and highlighting the expression of the marker genes in the clusters in the test set. 
   ### annotation_Snakemake
+  This directory contains code for faciliating the annotation of fine-grained clusters. It generates heatmap showing the top 10 differentially expressed genes in the clusters at the resolution specificed in the sample sheet. It also generates the corresponding dot plots and feature plots of specified marker genes. It also calculates the TPM of genes in each cluster. 
 
 ## Defining gene programs with consensus non-negative matrix factorization
   ### cNMF_run_and_analysis/Snakefile_cNMF
+  This directory contains code for running [cNMF](https://github.com/dylkot/cNMF) on count matrices specified in SampleSheet using an array of Ks specified in the config file. 
   ### cNMF_run_and_analysis/Snakefile_cNMF_analysis
+  This directory contains code for performing further analysis on cNMF results. The code reruns the consensus step using an updated local density filter, performs file organization, summarize how gene programs are distributed across various features (cell annotation, sex, etc.), identifies GO terms associated with the gene program, calculates the variants in gene expression explained by the gene programs, and generate additional plots for K selections.
 
 ## Identifying transcription factors regulating gene programs 
   ### ChromVar_Snakemake
+  This directory contains code for performing [chromVar](https://github.com/GreenleafLab/chromVAR) to calculate per-cell motif accessibility and output the Z-scores the [bias corrected deviations](https://greenleaflab.github.io/chromVAR/articles/Articles/Deviations.html) of each motif in each cell.
   ### get_motif_enrichment
-
-## Testing disease genes for preferential expression in particular cell types
-  ### Preferential expression of CHD genes
+  This directory contains code for calucalting the correaltion bewteen the per-cell motif accessibility and the expression of gene programs. 
 
 ## Assessing cell type heritability enrichment with stratified LD score regression
   ### LDSC_Snakemake 
-
+  This directory contains analysis code for LD score regression.
 ## Preparing variants for overlapping with scE2G-predicted enhancers
   ### LD_clumping_expansion
-
+  This directory contains code for calculating beta and odds ratios of each variants from each dataset, and performs LD clumping and expansion to get the variants at teach locus. 
 ## Linking GWAS variants to enhancers, target genes, cell types, and gene programs
   ### V2G_v2
+  This directory contains code for linking GWAS variants to cell-type specific enhancers, target genes and gene programs. 
 
+## Testing disease genes for preferential expression in particular cell types
+  ### CHD_enrichment
+  Enrichment of CHD genes in each cell type. 
+  
 ## Assessing enrichment of genes associated with valve traits in VIC program 27 
-  ### Assessing enrichment of genes associated with valve traits in VIC program 27
-
+  ### VIC_27_enrichment
+  Enrichment of genes targted by variants linked to valve traits in VIC program 27
 
 
 
