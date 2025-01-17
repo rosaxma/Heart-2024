@@ -1,0 +1,3 @@
+Trait	NiceName	GWAS	REMOVE	DUPLICATES	n_LeadSNPs	DataGroup	Source	Property	EnhancerRelevance	LDSC	Ratio 	Finemapped
+invnorm_lvef	LVEjectionFraction_v1	TRUE	FALSE	TRUE	15	LeftHeart	JPP_v1	Structure_Function	Fetal	FALSE	FALSE	TRUE
+resint_AVACM2	AorticValveArea	TRUE	FALSE	FALSE	105	AorticValve	JPP_v2	Structure_Function	Fetal	TRUE	FALSE	FALSE

@@ -1,0 +1,219 @@
+import os
+import pandas as pd
+import subprocess
+import numpy as np
+
+BioSampleConfigFile=config["SampleSheet"]
+BioSamples_config = pd.read_table(BioSampleConfigFile, na_values="").fillna("None").set_index("Sample", drop=False)
+BioSamples=list(BioSamples_config.index.values)
+print(BioSamples)
+
+#######################################################
+def get_size(file_path, unit='bytes'):
+    file_size = os.path.getsize(file_path)
+    exponents_map = {'bytes': 0, 'kb': 1, 'mb': 2, 'gb': 3}
+    if unit not in exponents_map:
+        raise ValueError("Must select from \
+        ['bytes', 'kb', 'mb', 'gb']")
+    else:
+        size = file_size / 1024 ** exponents_map[unit]
+        return round(size, 3)
+
+def getResources(wildcards):
+    frag=BioSamples_config.loc[wildcards.sample,"Fragment"]
+    if get_size(frag,unit="gb") < 2:
+        return 32
+    elif get_size(frag, unit="gb") < 3.5:
+        return 64
+    else:
+        return 128
+#######################################################
+def getFragment(wildcards):
+	    return BioSamples_config.loc[wildcards.sample,"Fragment"]
+
+rule all:
+	input:
+		os.path.join(config["OutDir"], "motif_exp_sampleSheet.tsv"),
+		expand(os.path.join(config["OutDir"],"{sample}","analysis", "motif_exp","motif_deviation_z_score.tsv"), sample=BioSamples),
+		expand(os.path.join(config["OutDir"],"{sample}","analysis", "TF","tf_heatmap.pdf"), sample=BioSamples),
+		expand(os.path.join(config["OutDir"],"{sample}","analysis", "TF","motif_heatmap.pdf"),sample=BioSamples),
+		arrowfile=expand(os.path.join(config["OutDir"],"{sample}", "ArchR", "{sample}.arrow"), sample=BioSamples),
+		chromVar=expand(os.path.join(config["OutDir"],"{sample}","analysis", "chromvar_output.tsv"),sample=BioSamples),
+		TF_expression_celltype=expand(os.path.join(config["OutDir"],"{sample}","analysis", "TF", "{sample}_Marker_TF_expression_in_cluster.pdf"),sample=BioSamples)
+ 
+rule CreateArrowfile:
+	input:
+		fragmentFile=getFragment, 
+	output:
+		arrowfile=os.path.join(config["OutDir"],"{sample}","ArchR", "{sample}.arrow"),
+	params:
+		genome=config["Genome"],
+		minTSS=config["CreateArrowfile"]["minTSS"],
+		minFrags=config["CreateArrowfile"]["minFrags"],
+		workdir=os.path.join(config["OutDir"],"{sample}", "ArchR"),
+		scriptdir=config["scriptdir"],
+	threads: 4
+	resources:
+		mem_gb=getResources,
+		runtime_hr=24,
+		partition="engreitz,normal,owners"
+	conda:
+		config["envs"]["R_ATAC"]
+	shell:
+		"""
+		mkdir -p {params.workdir};
+		Rscript {params.scriptdir}/CreateArrowFiles.R \
+		--GenomeAssembly {params.genome} \
+		--SampleName {wildcards.sample} \
+		--FragmentFile {input.fragmentFile} \
+		--minTSS {params.minTSS} \
+		--minFrags {params.minFrags} \
+		--WorkDir {params.workdir} \
+		--Threads $(({threads} * 2))
+		"""
+
+rule Run_chromVar:
+	input:
+		arrowfile=os.path.join(config["OutDir"],"{sample}", "ArchR", "{sample}.arrow"),
+	output:
+		qc_table=os.path.join(config["OutDir"],"{sample}","analysis","QC_table.tsv"),
+		umap=os.path.join(config["OutDir"],"{sample}","analysis","{sample}_UMAP_Celltype_source.pdf"),
+		chromVar=os.path.join(config["OutDir"],"{sample}","analysis", "chromvar_output.tsv"),
+		motif_deviation=os.path.join(config["OutDir"],"{sample}", "ArchR", "ArchRProject", "Plots", "Variable-Motif-Deviation-Scores.pdf")
+	params:
+		genome=config["Genome"],
+		clustering_info=config["clustering"]["info"],
+		clustering_col=config["clustering"]["column"],
+		workdir=os.path.join(config["OutDir"],"{sample}", "ArchR"),
+		scriptdir=config["scriptdir"],
+		outdir=os.path.join(config["OutDir"],"{sample}","analysis")
+	conda:
+		config["envs"]["R_ATAC"]
+	threads: 8
+	resources:
+		mem_gb=64,
+		runtime_hr=24,
+		partition="engreitz,normal,owners"
+	shell:
+		"""
+		Rscript {params.scriptdir}/ArchrProject.R \
+		--GenomeAssembly {params.genome} \
+		--WorkDir {params.workdir} \
+		--ArrowFile {input.arrowfile} \
+		--Threads {threads} \
+		--OutDir {params.outdir} \
+		--SampleName {wildcards.sample} \
+		--clustering_info {params.clustering_info} \
+		--clustering_col {params.clustering_col} 
+		"""
+
+
+rule getMarkerMotifs_gene_score:
+	input:
+		chromVar=os.path.join(config["OutDir"],"{sample}","analysis", "chromvar_output.tsv"),
+	params:
+		scriptdir=config["scriptdir"],
+		archr=os.path.join(config["OutDir"],"{sample}", "ArchR", "ArchRProject"),
+		outdir=os.path.join(config["OutDir"],"{sample}","analysis", "TF"),
+		genome=config["Genome"]
+	output:
+		TF_expression_celltype=os.path.join(config["OutDir"],"{sample}","analysis", "TF", "{sample}_Marker_TF_expression_in_cluster.pdf"),
+		chromVar_output=os.path.join(config["OutDir"],"{sample}","analysis", "TF", "{sample}_motif_TF_expression_correlation.tsv"),
+	threads: 4
+	resources:
+		mem_gb=16,
+		runtime_hr=12,
+		partition="engreitz,normal,owners"
+	conda:
+		config["envs"]["R_ATAC"]
+	shell:
+		"""
+		Rscript {params.scriptdir}/ArchrProject_chromVar_analysis_geneScoreMtx.R \
+			--GenomeAssembly {params.genome} \
+			--ArchR {params.archr} \
+			--SampleName {wildcards.sample}  \
+			--Outdir {params.outdir} \
+			--Threads {threads} 
+		"""
+
+rule plotHeatmap:
+	input:
+		chromVar_output=os.path.join(config["OutDir"],"{sample}","analysis", "TF", "{sample}_motif_TF_expression_correlation.tsv"),
+	output:
+		motif_heatmap=os.path.join(config["OutDir"],"{sample}","analysis", "TF","motif_heatmap.pdf"),
+		tf_heatmap=os.path.join(config["OutDir"],"{sample}","analysis", "TF","tf_heatmap.pdf")
+	params:
+		scriptdir=config["scriptdir"],
+		archr=os.path.join(config["OutDir"],"{sample}", "ArchR", "ArchRProject"),
+		outdir=os.path.join(config["OutDir"],"{sample}","analysis", "TF"),
+		genome=config["Genome"],
+		clustering_info=config["cellInfo"],
+		GEX_TPM=config["GEX_TPM"]
+	resources:
+		mem_gb=16,
+		runtime_hr=12,
+		partition="engreitz,normal,owners"
+	conda:
+		config["envs"]["R_ATAC"]
+	threads: 4
+	shell:
+		"""
+		Rscript {params.scriptdir}/plot_motif_heatmap.R \
+			--GenomeAssembly {params.genome} \
+			--ArchR {params.archr} \
+			--Outdir {params.outdir} \
+			--SampleName {wildcards.sample}  \
+			--Threads {threads} \
+			--TF_regulators {input.chromVar_output} \
+			--clustering_info {params.clustering_info} \
+			--GeneExpTPM {params.GEX_TPM}
+		"""
+
+rule extract_motif:
+	input:
+		chromVar_output=os.path.join(config["OutDir"],"{sample}","analysis", "TF", "{sample}_motif_TF_expression_correlation.tsv"),
+	output:
+		motif_mtx=os.path.join(config["OutDir"],"{sample}","analysis", "motif_exp","motif_deviation_z_score.tsv"),
+		motif_list=os.path.join(config["OutDir"],"{sample}","analysis", "motif_exp","motif_list.tsv"),
+		cbc_list=os.path.join(config["OutDir"],"{sample}","analysis", "motif_exp","atac_cbc_list.tsv"),
+	params:
+		scriptdir=config["scriptdir"],
+		archr=os.path.join(config["OutDir"],"{sample}", "ArchR", "ArchRProject"),
+		outdir=os.path.join(config["OutDir"],"{sample}","analysis", "motif_exp"),
+		genome=config["Genome"]
+	resources:
+		mem_gb=8,
+		runtime_hr=12,
+		partition="engreitz,normal,owners"
+	conda:
+		config["envs"]["R_ATAC"]
+	threads: 4
+	shell:
+		"""
+		Rscript {params.scriptdir}/extract_motif_info.R \
+			--GenomeAssembly {params.genome} \
+			--ArchR {params.archr} \
+			--Outdir {params.outdir} \
+			--SampleName {wildcards.sample}  \
+			--Threads {threads} 
+		"""
+
+rule SampleSheet:
+	input:
+		motif_mtx=expand(os.path.join(config["OutDir"],"{sample}","analysis", "motif_exp","motif_deviation_z_score.tsv"),sample=BioSamples),
+		motif_list=expand(os.path.join(config["OutDir"],"{sample}","analysis", "motif_exp","motif_list.tsv"),sample=BioSamples),
+		cbc_list=expand(os.path.join(config["OutDir"],"{sample}","analysis", "motif_exp","atac_cbc_list.tsv"),sample=BioSamples)
+	output:
+		SampleSheet=os.path.join(config["OutDir"], "motif_exp_sampleSheet.tsv")
+	resources:
+		mem_gb=2,
+		runtime_hr=1,
+		partition="engreitz,normal,owners"
+	run:
+		with open(output.SampleSheet, 'w+') as f:
+			f.write("Sample\tMotifMtx\tATAC_cbc\tMotifList\n")
+			for sample in BioSamples:
+				motif_mtx=os.path.join(config["OutDir"], sample, "analysis", "motif_exp","motif_deviation_z_score.tsv")
+				motif_list=os.path.join(config["OutDir"], sample, "analysis", "motif_exp","motif_list.tsv")
+				cbc_list=os.path.join(config["OutDir"], sample, "analysis", "motif_exp","atac_cbc_list.tsv")
+				f.write(sample+"\t"+motif_mtx+"\t"+cbc_list+"\t"+motif_list+"\n")

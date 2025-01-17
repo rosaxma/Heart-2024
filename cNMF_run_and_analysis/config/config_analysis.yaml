@@ -1,0 +1,25 @@
+SampleSheet: "config/analysis_SampleSheet.tsv"
+ScriptDir: "workflow/scripts/"
+OutDir: "outdir"
+ScratchDir: "/scratch"
+cnmf_env: "workflow/env/cnmf_env.yaml"
+R_env: "workflow/env/cnmf_r_env_analysis.yml"
+R_plot: "workflow/envs/R_4.2.0_scRNA.yml"
+kneed_env: "workflow/env/kneed.yml"
+UMAP_dims_upper_bound: 15
+topGenes2look: 300
+cNMF:
+        gene_list: FALSE
+        varGenes: TRUE
+        num_genes: 2000
+        n_iterations: 100
+        n_workers: 10
+        K: [15,18,21,24,27,30,33,36,39]
+        seed: 42
+        localDensity: 0.1
+
+cell_info:
+        cell_info_table: "config/additional_info.tsv"
+        cbc_colname: "cells"
+        metrics: ["source","Rounded.PCW","Sex", "celltype"]
+

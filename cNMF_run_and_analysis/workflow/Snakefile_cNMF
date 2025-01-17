@@ -1,0 +1,450 @@
+import subprocess
+import numpy as np
+import math
+import pandas as pd
+import os
+
+
+BioSampleConfigFile=config["SampleSheet"]
+BioSamples_config = pd.read_table(BioSampleConfigFile, na_values="").fillna("None").set_index("Sample", drop=False)
+BioSamples=list(BioSamples_config.index.values)
+
+cnmf_k=config["cNMF"]["K"]
+
+
+num_genes=str(config["cNMF"]["num_genes"])
+density=str(config["cNMF"]["localDensity"]).replace(".", "_")
+
+all_folders=[]
+if config["cNMF"]["gene_list"]:
+    all_folders.append("GeneList")
+if config["cNMF"]["varGenes"]:
+    all_folders.append("topGene"+ num_genes)
+
+
+rule all:
+    input:
+        svd_plot=expand(os.path.join(config["OutDir"],"{sample}/svd","{folder}","singular_value.pdf"), sample=BioSamples, k=cnmf_k, folder=all_folders), 
+        nmf_params=expand(os.path.join(config["ScratchDir"], "cNMF", "{sample}", "{folder}", "{sample}_K{k}", "cnmf_tmp", "{sample}_K{k}.nmf_params.df.npz"),folder=all_folders, sample=BioSamples, k=cnmf_k),
+        worker_done=expand(os.path.join(config["ScratchDir"], "cNMF", "{sample}", "{folder}", "{sample}_K{k}", "worker_logs", "worker_{workerIndex}.txt"),folder=all_folders,sample=BioSamples, k=cnmf_k, workerIndex=range(config["cNMF"]["n_workers"])),
+        job_complete=expand(os.path.join(config["ScratchDir"], "cNMF", "{sample}", "{folder}", "{sample}_allK", "cnmf_tmp", "{sample}_allK.spectra.k_{k}.merged.df.npz"),folder=all_folders, sample=BioSamples, k=cnmf_k),
+        plot=expand(os.path.join(config["OutDir"], "{sample}", "{folder}","{sample}_allK.k_selection.png"),folder=all_folders, sample=BioSamples),
+        spectra=expand(os.path.join(config["OutDir"], "{sample}", "{folder}", "K{k}","consensus"+density, "{sample}_allK.spectra.k_{k}.dt_" + density + ".consensus.df.npz"),folder=all_folders, sample=BioSamples, k=cnmf_k),
+        samplesheet = os.path.join(config["OutDir"], "analysis_SampleSheet.tsv"),
+        merged_clustering_pdf=expand(os.path.join(config["OutDir"], "{sample}", "{folder}", "{sample}_allK.clustering.dt_" + density + ".pdf"),folder=all_folders, sample=BioSamples),
+
+rule extract_sparse_mtx_1:
+    input:
+        SeuratObject = lambda wildcards: BioSamples_config.loc[wildcards.sample, "SeuratObject"],
+    params:
+        outdir=os.path.join(config["OutDir"], "{sample}"),
+        scriptdir=config["ScriptDir"],
+        min_gene=config["extract_sparse_mtx"]["min_gene"],
+        min_umi=config["extract_sparse_mtx"]["min_umi"],
+        scratchdir=os.path.join(config["ScratchDir"],"mtx","{sample}")
+    output:
+        tmp_mtx=os.path.join(config["ScratchDir"],"mtx","{sample}","matrix.mtx.gz"),
+        tmp_features=os.path.join(config["ScratchDir"],"mtx","{sample}","features.tsv.gz"),
+        tmp_barcodes=os.path.join(config["ScratchDir"],"mtx","{sample}","barcodes.tsv.gz"),
+        gene_df=os.path.join(config["ScratchDir"],"mtx","{sample}","gene_df.tsv")
+    resources:
+        mem_gb=64,
+        runtime_hr=2
+    conda: config["scRNA_env"]
+    shell:
+        """
+        Rscript {params.scriptdir}/get_sparse_mtx.R \
+            --SeuratObject {input.SeuratObject} \
+            --min_gene {params.min_gene} \
+            --min_umi {params.min_umi} \
+            --scratch {params.scratchdir} \
+            --outdir {params.outdir};
+        gzip {params.scratchdir}/matrix.mtx;
+        gzip {params.scratchdir}/features.tsv;
+        gzip {params.scratchdir}/barcodes.tsv;
+        """
+
+rule extract_sparse_mtx_2:
+    input:
+        gene_df=os.path.join(config["ScratchDir"],"mtx","{sample}","gene_df.tsv"),
+        tmp_mtx=os.path.join(config["ScratchDir"],"mtx","{sample}","matrix.mtx.gz"),
+        tmp_feaatures=os.path.join(config["ScratchDir"],"mtx","{sample}","features.tsv.gz"),
+        tmp_barcodes=os.path.join(config["ScratchDir"],"mtx","{sample}","barcodes.tsv.gz")
+    output:
+        barcode_dict = os.path.join(config["OutDir"],"{sample}/barcode.dict.RDS"),
+        filtered_matrix_gz = os.path.join(config["OutDir"],"{sample}/count_matrix/matrix.mtx.gz"),
+        filtered_gene_gz = os.path.join(config["OutDir"],"{sample}/count_matrix/features.tsv.gz"),
+        filtered_gene = os.path.join(config["OutDir"],"{sample}/count_matrix/features.tsv"),
+        filtered_barcode_gz = os.path.join(config["OutDir"],"{sample}/count_matrix/barcodes.tsv.gz"),
+    params:
+        scratchdir=os.path.join(config["ScratchDir"],"mtx","{sample}"),
+        scriptdir=config["ScriptDir"],
+        outdir=os.path.join(config["OutDir"], "{sample}"),
+        min_cell=config["extract_sparse_mtx"]["min_cell"],
+    resources:
+        mem_gb=64,
+        runtime_hr=2
+    conda: config["scRNA_env"]
+    shell:
+        """
+        Rscript {params.scriptdir}/get_sparse_mtx_filter_minCell.R \
+            --scratch {params.scratchdir} \
+            --min_cell {params.min_cell} \
+            --gene_df {input.gene_df} \
+            --outdir {params.outdir};
+
+        gzip {params.outdir}/count_matrix/matrix.mtx;
+        gzip -c {params.outdir}/count_matrix/features.tsv > {params.outdir}/count_matrix/features.tsv.gz;
+        gzip {params.outdir}/count_matrix/barcodes.tsv
+        """
+
+rule createCountmtx:
+    input:
+        filtered_matrix_gz = os.path.join(config["OutDir"],"{sample}/count_matrix/matrix.mtx.gz"),
+        filtered_gene_gz = os.path.join(config["OutDir"],"{sample}/count_matrix/features.tsv.gz"),
+        filtered_barcode_gz = os.path.join(config["OutDir"],"{sample}/count_matrix/barcodes.tsv.gz")
+    output:
+        count_h5ad=os.path.join(config["OutDir"],"{sample}/counts.h5ad")
+    params:
+        outdir=os.path.join(config["OutDir"],"{sample}"),
+        scriptdir=config["ScriptDir"]
+    resources:
+        mem_gb=32,
+        runtime_hr=10
+    conda: config["cnmf_env"]
+    shell:
+        """
+        python {params.scriptdir}/createCountMtx.py \
+            --mtx {input.filtered_matrix_gz} \
+            --filtered_barcode_gz {input.filtered_barcode_gz} \
+            --filtered_gene_gz {input.filtered_gene_gz} \
+            --output_h5ad {output.count_h5ad}
+        """
+
+rule cNMF_prepare_ind_K:
+    input:
+        count_h5ad=os.path.join(config["OutDir"],"{sample}/counts.h5ad")
+    params:
+        outdir=os.path.join(config["ScratchDir"], "cNMF", "{sample}", "{folder}"),
+        num_genes=int(num_genes),
+        num_iterations=config["cNMF"]["n_iterations"],
+        num_workers=config["cNMF"]["n_workers"], 
+        name="{sample}_K{k}",
+        seed=config["cNMF"]["seed"], 
+        folder="{folder}",
+        geneList=os.path.join(config["OutDir"],"{sample}/count_matrix/features.tsv"),
+    output:
+        nmf_params=os.path.join(config["ScratchDir"], "cNMF", "{sample}", "{folder}", "{sample}_K{k}","cnmf_tmp", "{sample}_K{k}.nmf_params.df.npz")
+    conda: config["cnmf_env"]
+    resources:
+        mem_gb=32,
+        runtime_hr=10
+    shell:
+        """
+        if [[ {params.folder} == topGene* ]]
+        then 
+            cnmf prepare \
+                --output-dir {params.outdir} \
+                --name {params.name} \
+                -c {input.count_h5ad} \
+                -k {wildcards.k} \
+                --numgenes {params.num_genes} \
+                --n-iter {params.num_iterations} \
+                --total-workers {params.num_workers} \
+                --seed {params.seed};
+        else
+            cnmf prepare \
+                --output-dir {params.outdir} \
+                --name {params.name} \
+                -c {input.count_h5ad} \
+                -k {wildcards.k} \
+                --numgenes 0 \
+                --genes-file {params.geneList} \
+                --n-iter {params.num_iterations} \
+                --total-workers {params.num_workers} \
+                --seed {params.seed};
+        fi
+        """
+#create fake all_k directories for combining
+rule cNMF_prepare_all_K:
+    input:
+        count_h5ad=os.path.join(config["OutDir"],"{sample}/counts.h5ad"),
+        nmf_params=expand(os.path.join(config["ScratchDir"], "cNMF", "{{sample}}", "{{folder}}", "{{sample}}_K{k}","cnmf_tmp", "{{sample}}_K{k}.nmf_params.df.npz"), k=cnmf_k),
+    params:
+        outdir=os.path.join(config["ScratchDir"], "cNMF", "{sample}", "{folder}"),
+        num_genes=int(num_genes),
+        num_iterations=config["cNMF"]["n_iterations"],
+        num_workers=config["cNMF"]["n_workers"], 
+        name="{sample}_allK",
+        seed=config["cNMF"]["seed"],
+        k=" ".join([str(i) for i in cnmf_k]),
+        folder="{folder}",
+        geneList=os.path.join(config["OutDir"],"{sample}/count_matrix/features.tsv"),
+    output:
+        nmf_params=os.path.join(config["ScratchDir"], "cNMF", "{sample}","{folder}", "{sample}_allK","cnmf_tmp", "{sample}_allK.nmf_params.df.npz"),
+        tpm_h5ad=os.path.join(config["ScratchDir"], "cNMF", "{sample}", "{folder}", "{sample}_allK","cnmf_tmp", "{sample}_allK.tpm.h5ad"),
+        norm_counts=os.path.join(config["OutDir"], "{sample}", "{folder}", "{sample}_allK.norm_counts.h5ad"),
+    conda: config["cnmf_env"]
+    resources:
+        mem_gb=32,
+        runtime_hr=10
+    shell:
+        """
+        if [[ {params.folder} == topGene* ]]
+        then 
+            cnmf prepare \
+                --output-dir {params.outdir} \
+                --name {params.name} \
+                -c {input.count_h5ad} \
+                -k {params.k} \
+                --numgenes {params.num_genes} \
+                --n-iter {params.num_iterations} \
+                --total-workers {params.num_workers} \
+                --seed {params.seed};
+        else
+            cnmf prepare \
+                --output-dir {params.outdir} \
+                --name {params.name} \
+                -c {input.count_h5ad} \
+                -k {params.k} \
+                --numgenes 0 \
+                --genes-file {params.geneList} \
+                --n-iter {params.num_iterations} \
+                --total-workers {params.num_workers} \
+                --seed {params.seed};
+        fi
+        cp {params.outdir}/{params.name}/cnmf_tmp/{params.name}.norm_counts.h5ad {output.norm_counts};
+        """
+
+rule svd:
+    input:
+        tpm_h5ad=os.path.join(config["ScratchDir"], "cNMF", "{sample}", "{folder}", "{sample}_allK","cnmf_tmp", "{sample}_allK.tpm.h5ad"),
+    params:
+        scriptdir=config["ScriptDir"],
+        k=config["svd"]["k"],
+        outdir=os.path.join(config["OutDir"],"{sample}/svd","{folder}")
+    output:
+        plot=os.path.join(config["OutDir"],"{sample}/svd","{folder}","singular_value.pdf"),  
+    threads: 4
+    resources:
+        mem_gb=16,
+        runtime_hr=1
+    conda:
+        config["svd_env"]
+    shell:
+        """
+        python {params.scriptdir}/svd.py \
+            --threads {threads} \
+            --tpm_mtx {input.tpm_h5ad} \
+            --k {params.k} \
+            --outdir {params.outdir}
+        """
+
+
+rule cNMF_factorize:
+    input:
+         nmf_params=os.path.join(config["ScratchDir"], "cNMF", "{sample}", "{folder}", "{sample}_K{k}","cnmf_tmp", "{sample}_K{k}.nmf_params.df.npz"),
+    params:
+        outdir=os.path.join(config["ScratchDir"], "cNMF", "{sample}", "{folder}"),
+        num_workers=config["cNMF"]["n_workers"], 
+        name="{sample}_K{k}",
+    output:
+        worker_done=os.path.join(config["ScratchDir"], "cNMF", "{sample}", "{folder}", "{sample}_K{k}", "worker_logs", "worker_{workerIndex}.txt"),
+    threads: 1
+    conda: config["cnmf_env"]
+    resources:
+        mem_gb=8,
+        runtime_hr=24
+    shell:
+        """
+        set +o pipefail;
+        cnmf factorize \
+            --output-dir {params.outdir} \
+            --name {params.name} \
+            --worker-index {wildcards.workerIndex} \
+            --total-workers {params.num_workers};
+        echo "worker_"{wildcards.workerIndex} "completed" > {output.worker_done}
+        """
+
+rule symlink_allK:
+    input:
+        worker_done=expand(os.path.join(config["ScratchDir"], "cNMF", "{{sample}}", "{{folder}}", "{{sample}}_K{{k}}", "worker_logs", "worker_{workerIndex}.txt"), workerIndex=range(config["cNMF"]["n_workers"])),
+        nmf_params=os.path.join(config["ScratchDir"], "cNMF", "{sample}","{folder}", "{sample}_allK","cnmf_tmp", "{sample}_allK.nmf_params.df.npz"),
+    output:
+        symlink_npz=expand(os.path.join(config["ScratchDir"], "cNMF", "{{sample}}", "{{folder}}", "{{sample}}_allK", "cnmf_tmp", "{{sample}}_allK.spectra.k_{{k}}.iter_{workerIndex}.df.npz"),workerIndex=range(config["cNMF"]["n_workers"])),
+    params:
+        K="{k}",
+        og_name="{sample}_K{k}", 
+        target_name="{sample}_allK",
+        input_dir=os.path.join(config["ScratchDir"], "cNMF", "{sample}", "{folder}", "{sample}_K{k}", "cnmf_tmp"),
+        outdir=os.path.join(config["ScratchDir"], "cNMF", "{sample}", "{folder}", "{sample}_allK", "cnmf_tmp"),
+    threads: 1
+    resources:
+        mem_gb=2,
+        runtime_hr=2
+    shell:
+        """
+        set +o pipefail;
+        cd {params.outdir};
+        rm -f *spectra*k_{params.K}*iter*df.npz; 
+        ln -s {params.input_dir}/*spectra*k_{params.K}*iter*df.npz {params.outdir};
+        for file in *spectra*k_{params.K}*iter*df.npz; do mv ${{file}} ${{file//{params.og_name}/{params.target_name}}}; done
+        """
+
+rule cNMF_combine:
+    input:
+        symlink_npz=expand(os.path.join(config["ScratchDir"], "cNMF", "{{sample}}", "{{folder}}", "{{sample}}_allK", "cnmf_tmp", "{{sample}}_allK.spectra.k_{k}.iter_{workerIndex}.df.npz"),k=cnmf_k,workerIndex=range(config["cNMF"]["n_workers"])),
+    params:
+        outdir=os.path.join(config["ScratchDir"], "cNMF", "{sample}", "{folder}"),
+        name="{sample}_allK",
+    output:
+        merged_df=os.path.join(config["ScratchDir"], "cNMF", "{sample}", "{folder}", "{sample}_allK", "cnmf_tmp", "{sample}_allK.spectra.k_{k}.merged.df.npz"),
+    conda: config["cnmf_env"]
+    resources:
+        mem_gb=4,
+        runtime_hr=10
+    shell:
+        """
+        set +o pipefail;
+        cnmf combine \
+            --output-dir {params.outdir} \
+            --name {params.name};
+        """
+
+rule K_selectionPlot:
+    input:
+         merged_df=expand(os.path.join(config["ScratchDir"], "cNMF", "{{sample}}", "{{folder}}", "{{sample}}_allK", "cnmf_tmp", "{{sample}}_allK.spectra.k_{k}.merged.df.npz"),k=cnmf_k),
+    output:
+        plot=os.path.join(config["OutDir"], "{sample}", "{folder}","{sample}_allK.k_selection.png")
+    params:
+        outdir=os.path.join(config["ScratchDir"], "cNMF", "{sample}", "{folder}"),
+        perm_dir=os.path.join(config["OutDir"], "{sample}", "{folder}"),
+        name="{sample}_allK",
+        local_density=config["cNMF"]["localDensity"]
+    conda: config["cnmf_env"]
+    resources:
+        mem_gb=32,
+        runtime_hr=10
+    shell:
+        """
+        set +o pipefail;
+        cnmf k_selection_plot \
+            --output-dir {params.outdir} \
+            --name {params.name};
+        cp {params.outdir}/{params.name}/{params.name}.k_selection.png {params.perm_dir}
+        """
+
+
+rule cNMF_consensus:
+    input: 
+        merged_df=os.path.join(config["ScratchDir"], "cNMF", "{sample}", "{folder}", "{sample}_allK", "cnmf_tmp", "{sample}_allK.spectra.k_{k}.merged.df.npz"),
+    output:
+        consensus_npz=os.path.join(config["ScratchDir"], "cNMF", "{sample}", "{folder}", "{sample}_allK", "cnmf_tmp", "{sample}_allK.spectra.k_{k}.dt_" + density + ".consensus.df.npz"),
+    params:
+        outdir=os.path.join(config["ScratchDir"], "cNMF", "{sample}", "{folder}"),
+        name="{sample}_allK",
+        local_density=config["cNMF"]["localDensity"],
+        scriptdir=config["ScriptDir"]
+    conda: config["cnmf_env"]
+    resources:
+        mem_gb=128,
+        runtime_hr=10
+    shell:
+        """
+        set +o pipefail;
+        python {params.scriptdir}/modified.cnmf.py consensus \
+            --output-dir {params.outdir} \
+            --name {params.name} \
+            --components {wildcards.k} \
+            --local-density-threshold {params.local_density} \
+            --show-clustering ;
+        """
+rule move_outputs:
+    input:
+        consensus_npz=os.path.join(config["ScratchDir"], "cNMF", "{sample}", "{folder}", "{sample}_allK", "cnmf_tmp", "{sample}_allK.spectra.k_{k}.dt_" + density + ".consensus.df.npz"),
+    params:
+        outdir=os.path.join(config["ScratchDir"], "cNMF", "{sample}", "{folder}", "{sample}_allK"),
+        density_string=density,
+        name="{sample}_allK",
+        perm_dir=os.path.join(config["OutDir"], "{sample}", "{folder}", "K{k}", "consensus"+density),
+    output:
+        touch(os.path.join(config["OutDir"], "{sample}", "{folder}", "K{k}", "consensus"+density, "move_outputs.done")),
+        spectra=os.path.join(config["OutDir"], "{sample}", "{folder}", "K{k}", "consensus"+density, "{sample}_allK.spectra.k_{k}.dt_" + density + ".consensus.df.npz"),
+        clustering_plot=os.path.join(config["OutDir"], "{sample}", "{folder}", "K{k}", "consensus"+density, "{sample}_allK.clustering.k_{k}.dt_" + density + ".png"),
+    resources:
+        mem_gb=2,
+        runtime_hr=10
+    shell:
+        """
+        cp {params.outdir}/{params.name}*clustering*k_{wildcards.k}*{params.density_string}* {params.perm_dir};
+        cp {params.outdir}/{params.name}*spectra*k_{wildcards.k}*{params.density_string}* {params.perm_dir};
+        cp {params.outdir}/{params.name}*usages*k_{wildcards.k}*{params.density_string}* {params.perm_dir};
+        cp {params.outdir}/cnmf_tmp/{params.name}*usages*k_{wildcards.k}*{params.density_string}*consensus.df.npz {params.perm_dir};
+        cp {params.outdir}/cnmf_tmp/{params.name}*spectra*k_{wildcards.k}*{params.density_string}*consensus.df.npz {params.perm_dir};
+        """
+    
+rule generateAnalysisSampleSheet:
+    input:
+        barcode_dict = expand(os.path.join(config["OutDir"],"{sample}/barcode.dict.RDS"),sample=BioSamples),
+        norm_counts=expand(os.path.join(config["OutDir"], "{sample}", "{folder}", "{sample}_allK.norm_counts.h5ad"),sample=BioSamples,folder=all_folders)
+    output:
+        samplesheet = os.path.join(config["OutDir"], "analysis_SampleSheet.tsv")
+    resources:
+            mem_gb=1,
+            runtime_hr=1
+    run:
+        with open(output.samplesheet, 'w+') as f:
+            folder_string="\t".join([folder+"_NormCounts"for folder in all_folders])
+            f.write("Sample\tSeuratObject\tGeneIDdict\t"+folder_string+"\tFeatures\n")
+            for sample in BioSamples:
+                seurat_path= BioSamples_config.loc[sample, "SeuratObject"]
+                barcode_path=os.path.join(config["OutDir"],sample, "barcode.dict.RDS")
+                norm_counts_path_list=[]
+                for folder in all_folders:
+                    norm_counts_path=os.path.join(config["OutDir"], sample, folder, sample+"_allK.norm_counts.h5ad")
+                    norm_counts_path_list.append(norm_counts_path)
+                    norm_counts_path_string="\t".join(norm_counts_path_list)
+                    f.write(sample+"\t"+seurat_path+"\t"+barcode_path+"\t"+norm_counts_path_string+ "\t\n")
+
+rule png2pdf:
+    input:
+        clustering_plot=os.path.join(config["OutDir"], "{sample}", "{folder}", "K{k}", "consensus"+density, "{sample}_allK.clustering.k_{k}.dt_" + density + ".png"),
+    output:
+        clustering_pdf=os.path.join(config["OutDir"], "{sample}", "{folder}", "K{k}", "consensus"+density, "{sample}_allK.clustering.k_{k}.dt_" + density + ".pdf"),
+    resources:
+        mem_gb=2,
+        runtime_hr=1
+    run:
+        import img2pdf
+        from PIL import Image
+        from PIL import ImageDraw
+        import os
+        filename=os.path.basename(input.clustering_plot)
+        image = Image.open(input.clustering_plot)
+        Im = ImageDraw.Draw(image)
+        Im.text((10, 10), filename,fill=(0, 0, 0))
+        #image is modified in place
+        pdf_bytes = img2pdf.convert(image.filename)
+        file = open(output.clustering_pdf, "wb")
+        file.write(pdf_bytes)
+        image.close()
+        file.close()
+
+rule mergePDF:
+    input:
+        clustering_pdfs=expand(os.path.join(config["OutDir"], "{{sample}}", "{{folder}}", "K{k}", "consensus"+density, "{{sample}}_allK.clustering.k_{k}.dt_" + density + ".pdf"),k=cnmf_k),
+    output:
+        merged_clustering_pdf=os.path.join(config["OutDir"], "{sample}", "{folder}", "{sample}_allK.clustering.dt_" + density + ".pdf")
+    resources:
+        mem_gb=4,
+        runtime_hr=2
+    run:
+        from pypdf import PdfMerger
+        merger = PdfMerger()
+        for pdf in input.clustering_pdfs:
+            merger.append(pdf)
+        merger.write(output.merged_clustering_pdf)
+        merger.close()
+    
+
+    

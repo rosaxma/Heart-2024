@@ -1,0 +1,14 @@
+name: r_4.2_variant
+channels:
+  - bioconda
+  - conda-forge
+  - defaults
+dependencies:
+  - r-base=4.2.0
+  - bioconductor-txdb.hsapiens.ucsc.hg38.knowngene
+  - bioconductor-variantannotation
+  - bioconductor-org.hs.eg.db
+  - r-tidyverse
+  - r-data.table
+  - r-optparse
+  - bioconductor-genomicranges

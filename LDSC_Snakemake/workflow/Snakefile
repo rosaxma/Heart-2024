@@ -1,0 +1,302 @@
+import yaml 
+import json
+import os
+import pandas as pd
+import glob
+
+params_config_file = config['cellparamsTable']
+params_config_df = pd.read_table(params_config_file, na_values="").fillna("None").set_index("cell_type", drop=False)
+all_cell_types = params_config_df.loc[:, "cell_type"].values
+disease_table = pd.read_table(config['SUMSTATS_table'], na_values="").fillna("None").set_index("Disease", drop=False)
+#ABCPred_table = pd.read_csv(config['params_enhancer_bed']['prediction_file'], compression="gzip", header=0, sep='\t')
+
+###################################################################################
+STATS = (disease_table.loc[:, 'SummaryStats']).values
+output_dir=config["output_dir"]
+###################################################################################
+#key: dz: value: sumstats_path
+def get_basename(file_path, suffix):
+	basename = os.path.basename(file_path)
+	disease_name = basename[:-len(suffix)]
+	return disease_name
+	#key: dz: value: sumstats_path
+
+dz_sumstats={}
+for path in STATS:
+	try:
+		path_tmp=glob.glob(path)[0]
+		dz = get_basename(path_tmp, ".sumstats.gz")
+		dz_sumstats[dz]=path
+	except:
+		continue
+allDZ=list(dz_sumstats.keys())
+print(allDZ)
+###################################################################################
+
+rule all:
+	input:
+		os.path.join(os.path.join(config['project_home'], output_dir, "combined_results_table", "robust_traits", "heatmaps", "heatmap.done")),
+		os.path.join(config['project_home'], output_dir, "combined_results_table", "coefficient_z_score.pdf"),
+		os.path.join(config['project_home'], output_dir, "combined_results_table", "combined_LDSC_enrichment_below1_set_to_1.mtx"),
+		combined_results=os.path.join(config['project_home'], output_dir, "combined_results_table", "combined_LDSC_enrichment.tsv"),
+		ldscore_file = expand(os.path.join(config['project_home'], output_dir, "ldsc", "overlapping.{chr}.l2.ldscore.gz"), chr = range(1,23)),
+		results = expand(os.path.join(config['project_home'], output_dir,"ldsc", "dz", "{DZ}.results.txt"), DZ=allDZ),
+		enrichment_plot = expand(os.path.join(config['project_home'], output_dir, "ldsc", "dz", "{DZ}.results.pdf"), DZ=allDZ),
+		candidate_enhancer_bed = expand(os.path.join(config['project_home'], output_dir, "{cell_type}.bed"), cell_type=all_cell_types),
+		annotation_table  = os.path.join(config['project_home'], output_dir, "AnnotationTable.txt")
+
+rule sort_prediction:
+	input:
+		ABCpred = config['params_enhancer_bed']['prediction_file']
+	params:
+		chrom_sizes = config['chrom_sizes'],
+	output:
+		size_sorted_ABCpred=os.path.join(config['project_home'], "size_sorted_combined_EnhancerPredictionsAllPutative.ForVariantOverlap.shrunk150bp.txt.gz")
+	resources:
+		mem_gb=34,
+		runtime_hr=3
+	shell:
+		"""
+		echo "step0"
+		zcat {input.ABCpred} | head -1 | gzip > {output.size_sorted_ABCpred}
+		echo "step1"
+		zcat {input.ABCpred} | sed 1d | grep -v TargetGeneTSS | bedtools sort -i stdin -faidx {params.chrom_sizes} | gzip >> {output.size_sorted_ABCpred}
+		"""
+
+rule make_annotation_table:
+	params:
+		params_config = params_config_df,
+		bed_dir = os.path.join(config['project_home'], output_dir),
+	output:
+		annotation_table  = os.path.join(config['project_home'], output_dir, "AnnotationTable.txt"),
+	resources:
+		mem_gb=16,
+		runtime_hr=3
+	run:
+		with open(output.annotation_table, 'w') as f:
+			f.write('file\tname\tgroup\tcolor\n')
+		cellTypes = params.params_config.loc[:, "cell_type"].values
+		with open (output.annotation_table, 'a') as f:
+			for celltype in cellTypes:
+				output_file = params.bed_dir + "/" + celltype + ".bed"
+				f.write(output_file + "\t" + celltype + "\t"+"ABC" + "\t" + "red" + "\n")
+
+rule extract_candidate_enhancer_bed:
+	input:
+		size_sorted_ABCpred=os.path.join(config['project_home'], "size_sorted_combined_EnhancerPredictionsAllPutative.ForVariantOverlap.shrunk150bp.txt.gz")
+		#size_sorted_ABCpred = config['params_enhancer_bed']['prediction_file']
+	output:
+		candidate_enhancer_bed = os.path.join(config['project_home'], output_dir, "{cell_type}.bed")
+	resources:
+		mem_gb=16,
+		runtime_hr=3
+	run:
+		ABCPred_df = pd.read_csv(input.size_sorted_ABCpred, compression="gzip", header=0, sep='\t')
+		df_filtered = ABCPred_df[ABCPred_df["CellType"] == wildcards.cell_type]
+		df_filtered.to_csv(output.candidate_enhancer_bed, sep='\t', header=False, index=False)
+
+# Step1: https://github.com/bulik/ldsc/wiki/LD-Score-Estimation-Tutorial
+
+rule make_genome_annotation:
+	input:
+		candidate_enhancer_bed = expand(os.path.join(config['project_home'], output_dir, "{cell_type}.bed"), cell_type=all_cell_types),
+		annotation_table = os.path.join(config['project_home'], output_dir, "AnnotationTable.txt"),
+	params:
+		outdir = os.path.join(config['project_home'], output_dir, "ldsc"), 
+		EP_prediction_codedir = config['LanderLab-EP-Prediction_dir'], 
+		ldsc_codedir = config['LDSC_dir'], 
+		chrom_sizes = config['chrom_sizes'],
+		ldsc_baseline = config['params_genome_annotation']['ldsc_baseline'],
+		scripts_dir = config['scripts_dir'],
+		LDSC_codedir = config['LDSC_dir']
+	resources:
+		mem_gb=32,
+		runtime_hr=24
+	conda:
+		config["env"]["r_yml"]
+	output:
+		annotation_file = expand(os.path.join(config['project_home'], output_dir, "ldsc", "overlapping.{chr}.annot.gz"), chr = range(1,23))
+
+	shell:
+		"""
+		Rscript {params.scripts_dir}/MakeGenomeAnnotations.R \
+			--input {input.annotation_table} \
+			--output {params.outdir} \
+			--codeDir {params.EP_prediction_codedir} \
+			--sizes {params.chrom_sizes} \
+			--baseline {params.ldsc_baseline} 
+		"""
+
+# Step2: https://github.com/bulik/ldsc/wiki/Partitioned-Heritability-from-Continuous-Annotations
+rule calculate_ldscores:
+	input:
+		annotation_file = os.path.join(config['project_home'], output_dir, "ldsc", "overlapping.{chr}.annot.gz")
+	output:
+		touch(os.path.join(config['project_home'], output_dir, "ldsc_check", "ldsc_{chr}.done")),
+		ldscore_file = os.path.join(config['project_home'], output_dir, "ldsc", "overlapping.{chr}.l2.ldscore.gz")
+	params:
+		ldsc_codedir = config['LDSC_dir'],
+		bfile = os.path.join(config['LDSC_1kG_dir'], "1000G_EUR_Phase3_plink_hg38", "1000G.EUR.QC.{chr}"),
+		ldscore_file_base = os.path.join(config['project_home'], output_dir, "ldsc", "overlapping.{chr}")
+	resources:
+		mem_gb=64,
+		runtime_hr=24
+	conda:
+		config["env"]['ldsc_yml']
+	shell:
+		"""
+		python {params.ldsc_codedir}/ldsc.py \
+			--l2 \
+			--bfile {params.bfile} \
+			--ld-wind-cm 1 \
+			--annot {input.annotation_file} \
+			--out {params.ldscore_file_base}
+		"""
+
+
+
+rule run_sLDSC:
+	input:
+		ldscore_file = expand(os.path.join(config['project_home'], output_dir, "ldsc", "overlapping.{chr}.l2.ldscore.gz"),chr = range(1,23)),
+	params:
+		ld_score_dir = os.path.join(config['project_home'],output_dir, "ldsc"),
+		outdir = os.path.join(config['project_home'],output_dir, "ldsc", "dz", "{DZ}"),
+		ldsc_codedir = config['LDSC_dir'],
+		reference_dir = config['LDSC_1kG_dir'],
+		sumstats_path = lambda wildcards: dz_sumstats[wildcards.DZ]
+	output:
+		results = os.path.join(config['project_home'], output_dir, "ldsc", "dz", "{DZ}.results")
+	resources:
+		mem_gb=128,
+		runtime_hr=6
+	conda:
+		config["env"]['ldsc_yml']
+	shell:
+		"""
+		python {params.ldsc_codedir}/ldsc.py \
+			--h2 {params.sumstats_path} \
+			--ref-ld-chr {params.ld_score_dir}/overlapping. \
+			--w-ld-chr {params.reference_dir}/weights/weights.hm3_noMHC.  \
+			--overlap-annot \
+			--frqfile-chr {params.reference_dir}/1000G_EUR_Phase3_plink_hg38/1000G.EUR.QC.\
+			--out {params.outdir} \
+			--print-coefficients
+		"""
+
+
+rule plot_HeritabilityEnrichment:
+	input:
+		results = os.path.join(config['project_home'], output_dir, "ldsc", "dz", "{DZ}.results")
+	params:
+		scripts_dir = config['scripts_dir'],
+		working_dir = os.path.join(config['project_home'], output_dir, "ldsc", "dz"),
+		cell_params = params_config_file
+	output:
+		results = os.path.join(config['project_home'], output_dir, "ldsc", "dz", "{DZ}.results.txt"),
+		enrichment_plot = os.path.join(config['project_home'], output_dir, "ldsc", "dz", "{DZ}.results.pdf"),
+	conda:
+		config["env"]["r_yml"]
+	resources:
+		mem_gb=16,
+		runtime_hr=3
+	shell:
+		"""
+		cp {params.working_dir}/{wildcards.DZ}.results {params.working_dir}/{wildcards.DZ}.results.txt
+		Rscript  {params.scripts_dir}/PlotHeritabilityEnrichmentBarplot.R \
+			--input {params.working_dir}/{wildcards.DZ}.results.txt \
+			--output {params.working_dir}/{wildcards.DZ}.results.pdf \
+			--params {params.cell_params} \
+			--include-error-bars TRUE \
+			--ID {wildcards.DZ}
+		"""
+
+rule mergePDF:
+    input:
+        results_pdf=expand(os.path.join(config['project_home'], output_dir, "ldsc", "dz", "{DZ}.results.pdf"), DZ=allDZ),
+    output:
+        enrichment_pdf=os.path.join(config['project_home'], output_dir, "combined_results_table", "combined_enrichment.pdf"),
+        coefficient_z_score_pdf=os.path.join(config['project_home'], output_dir, "combined_results_table", "coefficient_z_score.pdf"),
+    resources:
+      mem_gb=4,
+      runtime_hr=2
+    run:
+      from pypdf import PdfMerger
+      merger_enrichment = PdfMerger()
+      merger_z_score = PdfMerger()
+      for pdf in input.results_pdf:
+        merger_enrichment.append(pdf, pages=(0,1))
+        merger_z_score.append(pdf, pages=(1,2))
+      merger_enrichment.write(output.enrichment_pdf)
+      merger_z_score.write(output.coefficient_z_score_pdf)
+      merger_enrichment.close()
+      merger_z_score.close()
+		
+rule combine_results:
+	input:
+		expand(os.path.join(config['project_home'], output_dir, "ldsc", "dz", "{DZ}.results"), DZ=allDZ),
+		sumstats_table=config['SUMSTATS_table']
+	params:
+		scripts_dir = config['scripts_dir'],
+		results=",".join(allDZ),
+		results_dir=os.path.join(config['project_home'], output_dir, "ldsc", "dz"),
+		outdir=os.path.join(config['project_home'], output_dir, "combined_results_table"),
+		celltypes=",".join(all_cell_types),
+		infoSheet=config["infoSheet"],
+		annotation=config["sample_info"],
+		leadSNPCount=config["lead_snp_count"]
+	output:
+		combined_results=os.path.join(config['project_home'], output_dir, "combined_results_table", "combined_LDSC_enrichment.tsv"),
+		combined_enrichment_mtx_1=os.path.join(config['project_home'], output_dir, "combined_results_table", "combined_LDSC_enrichment_below1_set_to_1.mtx"),
+		combined_enrichment_mtx_2=os.path.join(config['project_home'], output_dir, "combined_results_table", "combined_LDSC_enrichment_below1_or_insig_set_to_1.mtx"),
+		combined_zscore_mtx=os.path.join(config['project_home'], output_dir, "combined_results_table", "combined_LDSC_zscore.mtx"),
+		combined_logP_mtx=os.path.join(config['project_home'], output_dir, "combined_results_table", "combined_LDSC_logP.mtx"),
+		combined_FDR_P_mtx=os.path.join(config['project_home'], output_dir, "combined_results_table", "combined_LDSC_FDR_P.mtx")
+	conda:
+		config["env"]["r_yml"]
+	resources:
+		mem_gb=8,
+		runtime_hr=3
+	shell:
+		"""
+			Rscript  {params.scripts_dir}/combine_results.R \
+				--sumstats_table {input.sumstats_table} \
+				--traits {params.results} \
+				--results_dir {params.results_dir} \
+				--celltypes {params.celltypes} \
+				--outdir {params.outdir} \
+				--annotation {params.annotation} \
+				--infoSheet {params.infoSheet} \
+				--leadSNPCount {params.leadSNPCount}
+		"""
+
+rule plot_heatmap_filtered:
+	input:
+		ldsc_results=[os.path.join(config['project_home'], output_dir, "combined_results_table", "combined_LDSC_enrichment_below1_set_to_1.mtx"),os.path.join(config['project_home'], output_dir, "combined_results_table", "combined_LDSC_enrichment_below1_or_insig_set_to_1.mtx"), os.path.join(config['project_home'], output_dir, "combined_results_table", "combined_LDSC_zscore.mtx"), os.path.join(config['project_home'], output_dir, "combined_results_table", "combined_LDSC_logP.mtx")],
+		combined_FDR_P_mtx=os.path.join(config['project_home'], output_dir, "combined_results_table", "combined_LDSC_FDR_P.mtx")
+	params:
+		ldsc_results=",".join([os.path.join(config['project_home'], output_dir, "combined_results_table", "combined_LDSC_enrichment_below1_set_to_1.mtx"),os.path.join(config['project_home'], output_dir,"combined_results_table", "combined_LDSC_enrichment_below1_or_insig_set_to_1.mtx"), os.path.join(config['project_home'], output_dir, "combined_results_table", "combined_LDSC_zscore.mtx"), os.path.join(config['project_home'], output_dir, "combined_results_table", "combined_LDSC_logP.mtx")]),
+		scripts_dir = config['scripts_dir'],
+		outdir=os.path.join(config['project_home'], output_dir, "combined_results_table", "robust_traits", "heatmaps"),
+		annotation=config["sample_info"],
+		infoSheet=config["infoSheet"]
+	output:
+		touch(os.path.join(os.path.join(config['project_home'], output_dir, "combined_results_table", "robust_traits", "heatmaps", "heatmap.done"))),
+	conda:
+		config["env"]["r_yml"]
+	resources:
+		mem_gb=8,
+	shell:
+		"""
+		Rscript {params.scripts_dir}/plot_heatmap.R \
+				--outdir {params.outdir} \
+				--mtx {params.ldsc_results} \
+				--annotation {params.annotation} \
+				--p_value {input.combined_FDR_P_mtx} \
+				--infoSheet {params.infoSheet}
+		"""
+		
+						
+
+
+
+

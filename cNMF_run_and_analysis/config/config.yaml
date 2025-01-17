@@ -1,0 +1,26 @@
+SampleSheet: "config/samples.tsv"
+ScriptDir: "workflow/scripts/"
+OutDir: "outdir"
+ScratchDir: "/scratch"
+
+cnmf_env: "workflow/env/cnmf_env.yaml"
+scRNA_env: "workflow/env/r_env.yaml"
+svd_env: "workflow/env/svd.yaml"
+pdf_env: "workflow/env/pdf.yaml"
+extract_sparse_mtx:
+        min_gene: 200
+        min_umi: 200
+        min_cell: 10
+
+svd: 
+        k: [50]
+        
+cNMF:
+        gene_list: FALSE
+        varGenes: TRUE
+        num_genes: 2000
+        n_iterations: 100
+        n_workers: 10
+        K: [15,18,21,24,27,30,33,36,39,41,43,45,47,49,51,53,55,58,61]
+        seed: 42
+        localDensity: 0.2

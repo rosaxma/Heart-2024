@@ -1,0 +1,3 @@
+Trait	SNP	Effect_size	CI	SumstatsPath	calculateOdds
+invnorm_lvef	rsid	beta	se	invnorm_lvef.susieinf.snp.txt	T
+resint_AVACM2	SNP	BETA	SE	resint_AVACM2.tsv.gz	T

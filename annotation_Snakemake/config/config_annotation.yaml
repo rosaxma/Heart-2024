@@ -1,0 +1,13 @@
+SampleSheet: "config/summary_sheet.tsv"
+SampleInfoTable: "config/FetalHeartSamples.tsv"
+ExperimentInfoTable: "config/FetalHeartExp.tsv"
+OutDir: "clustering"
+ScriptDir: "workflow/scripts"
+combined_ATAC_QC_sheets: "config/combined_ATAC_QC_sheets.tsv"
+feature_table: "config/key_gene_list.tsv"
+gex_tpm_table: ""
+TPM_exclusive2cluster: FALSE
+clusters2remove: "config/cells2remove.tsv"
+env:
+        r_env: "workflow/envs/R_4.2.0_scRNA.yml"
+clustering_dict: '{ "clustering1": ["all_ACM"] }'

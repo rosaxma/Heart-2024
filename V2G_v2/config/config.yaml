@@ -1,0 +1,39 @@
+# modify outdir and SCRATCH for each reference file
+outdir: "outdir"
+SCRATCH: "/scratch"
+script_dir: "workflow/scripts"
+reference:
+        ref_variants: #common variants file with at least 3 columns, rsid (specified in ref_variants_SNP_column), variant coordinate ("end"), chromosome id ("chr")
+        ref_variants_SNP_colname: "rsid"
+input:
+        TraitTable: "config/var_cs_table.tsv" 
+        variantColName: "variant"
+        variantChrColName: "chr"
+        variantLeadColName: "LocusID"
+        csLeadColName: "LeadVariant"
+        csLeadChrColName: "chr"
+ExternalInfo:
+        GEPsInCelltypes: "config/example/fine_celltype_proportion_in_GEP_long.tsv"
+        GEP_genes: "config/example/top_gene_meta_long.tsv"
+        LDSC: #Table S12
+        complete: "FALSE"
+        TPM: "config/example/TPM_long.tsv"
+chrSizes: "config/example/GRCh38.chrom.sizes.bed"
+RemoveNonCoding: TRUE
+E2GPRED: #download from:
+ScoreCol: "E2G.Score.qnorm"
+UbiquitouslyExpressedGenes: #download from: https://github.com/broadinstitute/ABC-Enhancer-Gene-Prediction/blob/main/reference/UbiquitouslyExpressedGenes.txt
+known_causal: "config/combined_disease_causal_genes_wide.tsv"
+env:
+        r_env: "workflow/envs/r_4.2.0_slim.yaml"
+filters:
+        E2G: 2
+        GeneRefFile: #download from: https://github.com/broadinstitute/ABC-Enhancer-Gene-Prediction/blob/main/reference/hg38/CollapsedGeneBounds.hg38.TSS500bp.bed
+        Celltype: "config/assignment.tsv"
+        TraitRefFile: "config/traits.tsv"
+Enrichment:
+        GEP_TF_regulators: "config/filtered_TF_for_GEP.tsv"
+#random 1000000 SNPs from all common SNPs
+#unzip from backrgound_distal_noncoding_snps.txt.gz
+RandomBG: "config/backrgound_distal_noncoding_snps.txt"
+RandomBGLeadCol: "rsid"

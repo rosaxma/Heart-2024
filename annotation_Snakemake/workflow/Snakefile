@@ -1,0 +1,182 @@
+import os
+import pandas as pd
+import subprocess
+import numpy as np
+import csv
+
+BioSampleConfigFile=config["SampleSheet"]
+BioSamples_config = pd.read_table(BioSampleConfigFile, na_values="").fillna("None").set_index("Sample", drop=False)
+BioSamples=list(BioSamples_config.index.values)
+
+clustering_dict=eval(config["clustering_dict"])
+clustering_groups=clustering_dict.keys()
+########################################################################
+def getRDSPath(wildcards):
+    return os.path.join(BioSamples_config.loc[wildcards.sample,"SeuratObject"])
+
+def getCategory(wildcards):
+    return os.path.join(BioSamples_config.loc[wildcards.sample,"Category"])
+
+def getClusters2remove(wildcards):
+    if config["clusters2remove"] != "":
+        return config["clusters2remove"]
+    else:
+        return "NA"
+
+def getGEX_TPM_table(wildcards):
+    if config["gex_tpm_table"] != "":
+        return config["gex_tpm_table"]
+    else:
+        return "NA"
+
+def getBarcode_files(wildcards):
+    return expand(os.path.join(config["OutDir"],"{sample}","feature_analysis","barcode_w_annotations.tsv"),sample=clustering_dict[wildcards.group])
+
+def getRules(config):
+    if config["clusters2remove"] != "":
+        return os.path.join(config["OutDir"],"feature_analysis", "evaluation_table.tsv")
+    else:
+        return []
+
+########################################
+
+rule all:
+    input:
+        getRules(config),
+        expand(os.path.join(config["OutDir"],"{sample}","feature_analysis", "GEX_TPM.tsv"),sample=BioSamples),
+        expand(os.path.join(config["OutDir"],"{sample}","feature_analysis","top_10_DEG_heatmap.pdf"),sample=BioSamples),
+        expand(os.path.join(config["OutDir"],"{sample}","feature_analysis","Key_gene_dot_plot.pdf"),sample=BioSamples),
+        expand(os.path.join(config["OutDir"],"{sample}","feature_analysis","UMAP_colored_by_sample_feature.pdf"),sample=BioSamples),
+        expand(os.path.join(config["OutDir"],"feature_analysis","{group}","combined_barcodes_by_cluster.tsv"), group=clustering_groups),
+        expand(os.path.join(config["OutDir"],"feature_analysis","{group}","ATAC_fragments_per_cluster.tsv"),group=clustering_groups)
+
+rule plot_features:
+    input:
+        test_RDS=lambda wildcards:os.path.join(BioSamples_config.loc[wildcards.sample,"test_RDS"]),
+        full_RDS=lambda wildcards:os.path.join(BioSamples_config.loc[wildcards.sample,"full_RDS"])
+    params:
+        outDir=os.path.join(config["OutDir"],"{sample}","feature_analysis"),
+        res=lambda wildcards:BioSamples_config.loc[wildcards.sample,"res"],
+        scriptDir=config["ScriptDir"],
+        feature_table=config["feature_table"],
+        category=getCategory,
+        clusters2remove=getClusters2remove,
+        gex_tpm_table=getGEX_TPM_table,
+        exp_info=config["ExperimentInfoTable"],
+        exclusive=config["TPM_exclusive2cluster"]
+    output:
+        touch(os.path.join(config["OutDir"],"{sample}","feature_analysis","plot_feature.done")),
+        heatmap=os.path.join(config["OutDir"],"{sample}","feature_analysis","top_10_DEG_heatmap.pdf"),
+        dotmap=os.path.join(config["OutDir"],"{sample}","feature_analysis","Key_gene_dot_plot.pdf"),
+        umap=os.path.join(config["OutDir"],"{sample}","feature_analysis","UMAP_colored_by_sample_feature.pdf"),
+        barcode=os.path.join(config["OutDir"],"{sample}","feature_analysis","barcode_w_annotations.tsv"),
+    resources:
+        mem_gb=32,
+        runtime_hr=3,
+        partition="engreitz,owners,normal"
+    conda:
+        config["env"]["r_env"]
+    shell:
+        """
+            Rscript {params.scriptDir}/plot_UMAP.R \
+                --SeuratPath_full {input.full_RDS} \
+                --SeuratPath_test {input.test_RDS} \
+                --experiment_info_table {params.exp_info} \
+                --Sample {wildcards.sample} \
+                --res {params.res} \
+                --outdir {params.outDir} \
+                --key_feature_table {params.feature_table} \
+                --category {params.category} \
+                --clusters2remove {params.clusters2remove} \
+                --GEX_TPM_table {params.gex_tpm_table} \
+                --exclusive {params.exclusive}
+     """
+
+rule calculateTPM:
+    input:
+        full_RDS=lambda wildcards:os.path.join(BioSamples_config.loc[wildcards.sample,"full_RDS"])
+    params:
+        outDir=os.path.join(config["OutDir"],"{sample}","feature_analysis"),
+        res=lambda wildcards:BioSamples_config.loc[wildcards.sample,"res"],
+        scriptDir=config["ScriptDir"]
+    output:
+        tpm=os.path.join(config["OutDir"],"{sample}","feature_analysis", "GEX_TPM.tsv")
+    resources:
+        mem_gb=32,
+        runtime_hr=3,
+        partition="engreitz,owners,normal"
+    conda:
+        config["env"]["r_env"]
+    shell:
+        """
+            Rscript {params.scriptDir}/calculate_TPM.R \
+                --outdir {params.outDir} \
+                --seurat {input.full_RDS} \
+                --res {params.res}
+        """
+
+rule create_evaluation_sheet:
+    input:
+        updated_subset_RDS = expand(os.path.join(config["OutDir"],"{sample}","feature_analysis","plot_feature.done"), sample=BioSamples),
+    output:
+        summary_sheet=os.path.join(config["OutDir"], "feature_analysis", "evaluation_table.tsv")
+    resources:
+        mem_gb=2,
+        runtime_hr=2,
+        partition="engreitz,owners,normal"
+    run:
+        with open(output.summary_sheet, 'w+') as f:
+            f.write("Sample\tSeuratObject\tResolutionRange\tiPSC\tSVD\n")
+            for sample in BioSamples:
+                seurat=os.path.join(config["OutDir"],sample, "feature_analysis", sample+".sample.info.pflogpf.annotated.doublet.cluster.removed.RDS")
+                print(seurat)
+                if os.path.exists(seurat):
+                    f.write(sample+"\t"+seurat+"\t"+"0,1"+"\t"+"FALSE"+"\t"+"FALSE"+"\n")
+                else:
+                    seurat=BioSamples_config.loc[sample, "full_RDS"]
+                    f.write(sample+"\t"+seurat+"\t"+"0,1"+"\t"+"FALSE"+"\t"+"FALSE"+"\n")
+
+rule combine_barcode_lists:
+    input:
+       getBarcode_files,
+    output:
+        combined_barcode=os.path.join(config["OutDir"],"feature_analysis","{group}","combined_barcodes_by_cluster.tsv")
+    resources:  
+        mem_gb=4,
+        runtime_hr=1,
+        partition="engreitz,owners,normal"
+    shell:
+        """
+        set +o pipefail;
+        echo $'cbc\tcluster_manual\tcoarse_cluster' > {output.combined_barcode}
+        for sample in {input}
+        do
+            cat $sample |sed 1d >> {output.combined_barcode}
+        done
+        """
+
+rule count_ATAC_fragments:
+    input:
+        combined_barcode=os.path.join(config["OutDir"],"feature_analysis","{group}","combined_barcodes_by_cluster.tsv"),
+        ATAC_fragments=config["combined_ATAC_QC_sheets"]
+    params:
+        outDir=os.path.join(config["OutDir"],"feature_analysis", "{group}"),
+        scriptDir=config["ScriptDir"],
+    output:
+        ATAC_fragments_per_cluster=os.path.join(config["OutDir"],"feature_analysis", "{group}","ATAC_fragments_per_cluster.tsv"),
+    resources:
+        mem_gb=4,
+        runtime_hr=4,
+        partition="engreitz,owners,normal"
+    conda:
+        config["env"]["r_env"]
+    shell:
+        """
+            Rscript {params.scriptDir}/count_ATAC_frag.R \
+                --cluster_barcodes {input.combined_barcode} \
+                --ATAC_QC_sheet {input.ATAC_fragments} \
+                --outDir {params.outDir}
+        """
+
+
+

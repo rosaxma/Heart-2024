@@ -1,0 +1,2 @@
+Trait	fine_mapped_table	LeadVariantCol	VariantCol	ChrCol	PosCol	leadSNPPCol	variantPCol	leadPIPCol	variantPIPCol	Source	ZeroIndexed	ExcludeVariants
+invnorm_lvef	invnorm_lvef_variant_list.tsv	LeadSNP	rsid	chromosome	position	LeadSNP_P	Variant_P	LeadSNP_PIP	susieinf_PIP	QuantitativeHeartTraits	F	

@@ -1,0 +1,430 @@
+import os
+import pandas as pd
+import subprocess
+import numpy as np
+import csv
+
+BioSampleConfigFile=config["SampleSheet"]
+BioSamples_config = pd.read_table(BioSampleConfigFile, na_values="").fillna("None").set_index("Sample", drop=False)
+BioSamples=list(BioSamples_config.index.values)
+########################################################################
+def getRDSPath(wildcards):
+    return os.path.join(BioSamples_config.loc[wildcards.sample,"SeuratObject"])
+
+def get_size(file_path, unit='bytes'):
+    file_size = os.path.getsize(file_path)
+    exponents_map = {'bytes': 0, 'kb': 1, 'mb': 2, 'gb': 3}
+    if unit not in exponents_map:
+        raise ValueError("Must select from \
+        ['bytes', 'kb', 'mb', 'gb']")
+    else:
+        size = file_size / 1024 ** exponents_map[unit]
+        return round(size, 3)
+
+def getResources(wildcards):
+    path=getRDSPath(wildcards)
+    if get_size(path,unit="gb") < 2:
+        return 500
+    elif get_size(path,unit="gb") < 4:
+        return 1000
+    else:
+        return 1500
+
+def getSplitCountsResources(wildcards):
+    path=getRDSPath(wildcards)
+    if get_size(path,unit="gb") < 1:
+        return 64
+    elif get_size(path,unit="gb") < 4:
+        return 200
+    else:
+        return 256
+
+
+def getPartition(wildcards):
+   path=getRDSPath(wildcards)
+   if get_size(path,unit="gb") < 2:
+      return "engreitz,owners"
+   elif get_size(path,unit="gb") < 4:
+      return "bigmem"
+   else:
+      return "bigmem"
+
+def get_res_string(wildcards):
+    return(BioSamples_config.loc[wildcards.sample,"ResolutionRange"])
+
+def getIPSC(wildcards):
+    return(BioSamples_config.loc[wildcards.sample,"iPSC"])
+
+def getSVD(wildcards):
+    return(BioSamples_config.loc[wildcards.sample,"SVD"])
+########################################################################
+rule all:
+    input:
+        expand(os.path.join(config["OutDir"],"{sample}", "heatmaps", "annotation.done"),sample=BioSamples),
+        expand(os.path.join(config["OutDir"],"{sample}", "heatmaps_test", "annotation.done"),sample=BioSamples),
+        summary_sheet=os.path.join(config["OutDir"],"summary_sheet.tsv")
+
+rule addSampleInfo:
+    input:
+        seurat_object= lambda wildcards: os.path.join(BioSamples_config.loc[wildcards.sample,"SeuratObject"]),
+    params:
+        sampleInfoTable=config["SampleInfoTable"],
+        outDir=os.path.join(config["AltOutDir"],"{sample}"),
+        scriptDir=config["ScriptDir"],
+        minCell=config["minCell"],
+	iPSC=getIPSC,
+	SVD=getSVD,
+	effectiveSheet=config["EffectiveSheet"]
+    output:
+        seurat_object_w_info = os.path.join(config["AltOutDir"], "{sample}", "{sample}.sample.info.RDS"),
+        filtered_matrix_gz = os.path.join(config["AltOutDir"],"{sample}","matrix", "matrix.mtx.gz"),
+        filtered_gene_gz = os.path.join(config["AltOutDir"],"{sample}", "matrix", "features.tsv.gz"),
+        filtered_barcode_gz = os.path.join(config["AltOutDir"],"{sample}", "matrix","barcodes.tsv.gz")
+    resources:
+        mem_gb=128,
+        runtime_hr=5,
+        partition="engreitz,owners"
+    conda:
+        config["env"]["r_env"]
+    shell:
+        """
+            Rscript {params.scriptDir}/modify_seurat_source_general.R \
+                --inputSeuratObject {input.seurat_object} \
+                --SampleInfoTable {params.sampleInfoTable} \
+                --Sample {wildcards.sample} \
+                --OutDir {params.outDir} \
+                --iPSC {params.iPSC} \
+		--SVD {params.SVD} \
+		--effectiveSheet {params.effectiveSheet} \
+                --minCell {params.minCell};
+            gzip {params.outDir}/matrix/matrix.mtx;
+            gzip {params.outDir}/matrix/features.tsv;
+            gzip {params.outDir}/matrix/barcodes.tsv;
+        """
+
+rule SplitCounts:
+    input:
+        seurat_object_w_info = os.path.join(config["AltOutDir"], "{sample}", "{sample}.sample.info.RDS"),
+    params:
+        outDir=os.path.join(config["AltOutDir"],"{sample}", "count_split"),
+        scriptDir=config["ScriptDir"],
+    output:
+        train_RDS=os.path.join(config["AltOutDir"],"{sample}", "count_split", "train_matrix","train.RDS"),
+        test_RDS=os.path.join(config["AltOutDir"],"{sample}", "count_split", "test_matrix","test.RDS"),
+        train_matrix_gz = os.path.join(config["AltOutDir"],"{sample}", "count_split", "train_matrix","matrix.mtx.gz"),
+        train_gene_gz = os.path.join(config["AltOutDir"],"{sample}", "count_split", "train_matrix","features.tsv.gz"),
+        train_barcode_gz = os.path.join(config["AltOutDir"],"{sample}", "count_split", "train_matrix", "barcodes.tsv.gz"),
+        test_matrix_gz = os.path.join(config["AltOutDir"],"{sample}", "count_split", "test_matrix","matrix.mtx.gz"),
+        test_gene_gz = os.path.join(config["AltOutDir"],"{sample}", "count_split", "test_matrix","features.tsv.gz"),
+        test_barcode_gz = os.path.join(config["AltOutDir"],"{sample}", "count_split", "test_matrix", "barcodes.tsv.gz")
+    resources:
+        mem_gb=getSplitCountsResources,
+        runtime_hr=5,
+        partition="engreitz,owners"
+    threads: 8
+    shell:
+        """
+            module load R/4.2.0;
+            Rscript {params.scriptDir}/count_split.R \
+                --inputSeuratObject {input.seurat_object_w_info} \
+                --threads {threads} \
+                --Sample {wildcards.sample} \
+                --OutDir {params.outDir};
+            gzip {params.outDir}/train_matrix/matrix.mtx;
+            gzip {params.outDir}/train_matrix/features.tsv;
+            gzip {params.outDir}/train_matrix/barcodes.tsv;
+            gzip {params.outDir}/test_matrix/matrix.mtx;
+            gzip {params.outDir}/test_matrix/features.tsv;
+            gzip {params.outDir}/test_matrix/barcodes.tsv;
+            module unload R/4.2.0;
+        """
+
+rule transformation_original:
+     input:
+        filtered_matrix_gz = os.path.join(config["AltOutDir"],"{sample}", "matrix", "matrix.mtx.gz"),
+        filtered_gene_gz = os.path.join(config["AltOutDir"],"{sample}", "matrix","features.tsv.gz"),
+        filtered_barcode_gz = os.path.join(config["AltOutDir"],"{sample}", "matrix", "barcodes.tsv.gz")
+     output:
+        metrics=os.path.join(config["AltOutDir"],"{sample}","matrix", "transformation","combined_metrics.json"),
+        transformed_mtx=os.path.join(config["AltOutDir"],"{sample}", "matrix", "transformation", "matrix", "matrix.mtx.gz")
+     params:
+        outdir=os.path.join(config["AltOutDir"],"{sample}", "matrix", "transformation"),
+        scriptdir=config["ScriptDir"]
+     resources:
+        mem_gb=64,
+        runtime_hr=5,
+        partition="engreitz,owners"
+     shell:
+        """
+        python {params.scriptdir}/metrics_matrix.py {input.filtered_matrix_gz} {output.metrics};
+        python {params.scriptdir}/norm_sparse.py {input.filtered_matrix_gz} {params.outdir};
+        rm -f {params.outdir}/*mtx.gz;
+        gzip {params.outdir}/*mtx;
+        python {params.scriptdir}/metrics_methods_sparse.py {input.filtered_matrix_gz} {params.outdir}/pf_log_pf.mtx.gz {output.metrics};
+        ln -s {params.outdir}/*.mtx.gz {params.outdir}/matrix/matrix.mtx.gz;
+        mv {input.filtered_gene_gz} {params.outdir}/matrix/;
+        mv {input.filtered_barcode_gz} {params.outdir}/matrix/;
+        """
+
+rule transformation_train:
+     input:
+        train_matrix_gz = os.path.join(config["AltOutDir"],"{sample}", "count_split", "train_matrix","matrix.mtx.gz"),
+        train_gene_gz = os.path.join(config["AltOutDir"],"{sample}", "count_split", "train_matrix","features.tsv.gz"),
+        train_barcode_gz = os.path.join(config["AltOutDir"],"{sample}", "count_split", "train_matrix", "barcodes.tsv.gz")
+     output:
+        metrics=os.path.join(config["AltOutDir"],"{sample}","count_split", "train_matrix", "transformation","combined_metrics.json"),
+        transformed_mtx=os.path.join(config["AltOutDir"],"{sample}", "count_split", "train_matrix","transformation", "matrix", "matrix.mtx.gz")
+     params:
+        outdir=os.path.join(config["AltOutDir"],"{sample}", "count_split", "train_matrix", "transformation"),
+        scriptdir=config["ScriptDir"]
+     resources:
+        mem_gb=64,
+        runtime_hr=5,
+        partition="engreitz,owners"
+     shell:
+        """
+        python {params.scriptdir}/metrics_matrix.py {input.train_matrix_gz} {output.metrics};
+        python {params.scriptdir}/norm_sparse.py {input.train_matrix_gz} {params.outdir};
+        rm -f {params.outdir}/*mtx.gz;
+        gzip {params.outdir}/*mtx;
+        python {params.scriptdir}/metrics_methods_sparse.py {input.train_matrix_gz} {params.outdir}/pf_log_pf.mtx.gz {output.metrics};
+        ln -s {params.outdir}/*.mtx.gz {params.outdir}/matrix/matrix.mtx.gz;
+        mv {input.train_gene_gz} {params.outdir}/matrix/;
+        mv {input.train_barcode_gz} {params.outdir}/matrix/;
+        """
+
+rule transformation_test:
+     input:
+        test_matrix_gz = os.path.join(config["AltOutDir"],"{sample}", "count_split", "test_matrix","matrix.mtx.gz"),
+        test_gene_gz = os.path.join(config["AltOutDir"],"{sample}", "count_split", "test_matrix","features.tsv.gz"),
+        test_barcode_gz = os.path.join(config["AltOutDir"],"{sample}", "count_split", "test_matrix", "barcodes.tsv.gz")
+     output:
+        metrics=os.path.join(config["AltOutDir"],"{sample}","count_split", "test_matrix", "transformation","combined_metrics.json"),
+        transformed_mtx=os.path.join(config["AltOutDir"],"{sample}", "count_split", "test_matrix","transformation", "matrix", "matrix.mtx.gz")
+     params:
+        outdir=os.path.join(config["AltOutDir"],"{sample}", "count_split", "test_matrix", "transformation"),
+        scriptdir=config["ScriptDir"]
+     resources:
+        mem_gb=64,
+        runtime_hr=5,
+        partition="engreitz,owners"
+     shell:
+        """
+        python {params.scriptdir}/metrics_matrix.py {input.test_matrix_gz} {output.metrics};
+        python {params.scriptdir}/norm_sparse.py {input.test_matrix_gz} {params.outdir};
+        rm -f {params.outdir}/*mtx.gz;
+        gzip {params.outdir}/*mtx;
+        python {params.scriptdir}/metrics_methods_sparse.py {input.test_matrix_gz} {params.outdir}/pf_log_pf.mtx.gz {output.metrics};
+        ln -s {params.outdir}/*.mtx.gz {params.outdir}/matrix/matrix.mtx.gz;
+        mv {input.test_gene_gz} {params.outdir}/matrix/;
+        mv {input.test_barcode_gz} {params.outdir}/matrix/;
+        """
+
+rule updateTrainSeuratObject_and_clustering:
+    input:
+        train_RDS=os.path.join(config["AltOutDir"],"{sample}", "count_split", "train_matrix","train.RDS"),
+        transformed_mtx=os.path.join(config["AltOutDir"],"{sample}", "count_split", "train_matrix","transformation", "matrix", "matrix.mtx.gz")
+    output:
+        updated_train_RDS = os.path.join(config["OutDir"],"{sample}", "count_split", "train_matrix","train.cluster.pick.res.RDS"),
+        cluster_count=os.path.join(config["OutDir"],"{sample}", "count_split", "train_matrix","cluster_count_res.tsv"),
+        subclustering_results=os.path.join(config["OutDir"],"{sample}", "count_split", "train_matrix","subclustering_results.tsv"),
+    conda:
+        config["env"]["r_env"]
+    params:
+        scriptdir=config["ScriptDir"],
+        outdir=os.path.join(config["OutDir"],"{sample}", "count_split", "train_matrix"),
+        transformed_mtx_dir=os.path.join(config["AltOutDir"],"{sample}", "count_split", "train_matrix","transformation", "matrix"),
+        res_string=get_res_string,
+        increment=config["clustering"]["increment"],
+        variants_to_regress=config["variants2regress"],
+        sex_genes=config["SexGeneList"]
+    resources:
+        mem_gb=64,
+        runtime_hr=5,
+        partition="engreitz,owners"
+    shell:
+        """
+            Rscript {params.scriptdir}/updateSeurat_clustering.R \
+                --inputSeuratObject {input.train_RDS} \
+                --transformed_mtx {params.transformed_mtx_dir} \
+                --outdir {params.outdir} \
+                --res_range {params.res_string} \
+                --increment {params.increment} \
+                --sex_genes {params.sex_genes}
+        """
+
+
+rule updateSeuratObject_original:
+    input:
+        seurat_object_w_info = os.path.join(config["AltOutDir"], "{sample}", "{sample}.sample.info.RDS"),
+        transformed_mtx=os.path.join(config["AltOutDir"],"{sample}", "matrix", "transformation", "matrix", "matrix.mtx.gz")
+    output:
+        updated_RDS = os.path.join(config["OutDir"],"{sample}", "{sample}.sample.info.pflogpf.RDS"),
+    conda:
+        config["env"]["r_env"]
+    params:
+        scriptdir=config["ScriptDir"],
+        transformed_mtx_dir=os.path.join(config["AltOutDir"],"{sample}", "matrix", "transformation", "matrix",),
+        outdir=os.path.join(config["OutDir"],"{sample}"),
+        variants_to_regress=config["variants2regress"],
+        sex_genes=config["SexGeneList"]
+    resources:
+        mem_gb=64,
+        runtime_hr=5,
+        partition="engreitz,owners"
+    shell:
+        """
+            Rscript {params.scriptdir}/updateSeurat.R \
+                --inputSeuratObject {input.seurat_object_w_info} \
+                --transformed_mtx {params.transformed_mtx_dir} \
+                --outdir {params.outdir} \
+                --sex_genes {params.sex_genes}
+        """
+
+rule updateSeuratObject_test:
+    input:
+        test_RDS=os.path.join(config["AltOutDir"],"{sample}", "count_split", "test_matrix","test.RDS"),
+        transformed_mtx=os.path.join(config["AltOutDir"],"{sample}", "count_split", "test_matrix","transformation", "matrix", "matrix.mtx.gz")
+    output:
+        updated_RDS = os.path.join(config["OutDir"],"{sample}", "count_split", "test_matrix","test.pflogpf.RDS"),
+    conda:
+        config["env"]["r_env"]
+    params:
+        scriptdir=config["ScriptDir"],
+        transformed_mtx_dir=os.path.join(config["AltOutDir"],"{sample}", "count_split", "test_matrix","transformation", "matrix"),
+        outdir=os.path.join(config["OutDir"],"{sample}", "count_split", "test_matrix"),
+        variants_to_regress=config["variants2regress"]
+    resources:
+        mem_gb=64,
+        runtime_hr=5,
+        partition="engreitz,owners"
+    shell:
+        """
+            Rscript {params.scriptdir}/updateSeurat.R \
+                --inputSeuratObject {input.test_RDS} \
+                --transformed_mtx {params.transformed_mtx_dir} \
+                --outdir {params.outdir} 
+        """
+
+rule PlotUMAP_original:
+    input:
+        updated_RDS = os.path.join(config["OutDir"],"{sample}", "{sample}.sample.info.pflogpf.RDS"),
+        subclustering_results=os.path.join(config["OutDir"],"{sample}", "count_split", "train_matrix","subclustering_results.tsv"),
+    params:
+        scriptDir=config["ScriptDir"],
+    output:
+        touch(os.path.join(config["OutDir"],"{sample}", "creating_UMAP_on_original_complete_matrix.complete")),
+        cluster_pdf=os.path.join(config["OutDir"],"{sample}", "UMAP_complete_origional_matrix.pdf"),
+        annotated_RDS=os.path.join(config["OutDir"],"{sample}", "{sample}.sample.info.pflogpf.annotated.RDS")
+    resources:
+        mem_gb=32,
+        runtime_hr=1,
+        partition="engreitz,owners"
+    conda:
+        config["env"]["r_env"]
+    shell:
+        """
+         Rscript {params.scriptDir}/plot_UMAP.R \
+                --SeuratPath {input.updated_RDS} \
+                --subclustering_results {input.subclustering_results} \
+                --outputPDF {output.cluster_pdf} \
+                --annotatedSeurat {output.annotated_RDS}
+        """
+
+
+rule PlotUMAP_test:
+    input:
+        updated_RDS = os.path.join(config["OutDir"],"{sample}", "count_split", "test_matrix","test.pflogpf.RDS"),
+        subclustering_results=os.path.join(config["OutDir"],"{sample}", "count_split", "train_matrix","subclustering_results.tsv"),
+    params:
+        scriptDir=config["ScriptDir"],
+    output:
+        touch(os.path.join(config["OutDir"],"{sample}", "creating_UMAP_on_test_matrix.complete")),
+        cluster_pdf=os.path.join(config["OutDir"],"{sample}", "UMAP_test_matrix.pdf"),
+        annotated_RDS = os.path.join(config["OutDir"],"{sample}", "count_split", "test_matrix","test.pflogpf.annotated.RDS")
+    resources:
+        mem_gb=32,
+        runtime_hr=1,
+        partition="engreitz,owners"
+    conda:
+        config["env"]["r_env"]
+    shell:
+        """
+         Rscript {params.scriptDir}/plot_UMAP.R \
+                --SeuratPath {input.updated_RDS} \
+                --subclustering_results {input.subclustering_results} \
+                --outputPDF {output.cluster_pdf} \
+                --annotatedSeurat {output.annotated_RDS} 
+        """
+
+rule highlightMarkerGenes_original:
+    input:
+        annotated_RDS=os.path.join(config["OutDir"],"{sample}", "{sample}.sample.info.pflogpf.annotated.RDS"),
+    output:
+        touch(os.path.join(config["OutDir"],"{sample}", "heatmaps", "annotation.done"))
+    conda:
+        config["env"]["r_env"]
+    params:
+        scriptdir=config["ScriptDir"],
+        outdir=os.path.join(config["OutDir"],"{sample}", "heatmaps"),
+        genelist=config["GeneList"]
+    conda:
+        config["env"]["r_env"]
+    resources:
+        mem_gb=64,
+        runtime_hr=5,
+        partition="engreitz,owners"
+    shell:
+        """
+            Rscript {params.scriptdir}/calculate_GEX.R \
+                --outdir {params.outdir} \
+                --seurat {input.annotated_RDS} \
+                --genelist {params.genelist}
+        """
+
+rule highlightMarkerGenes_test:
+    input:
+        annotated_RDS = os.path.join(config["OutDir"],"{sample}", "count_split", "test_matrix","test.pflogpf.annotated.RDS"),
+    output:
+        touch(os.path.join(config["OutDir"],"{sample}", "heatmaps_test", "annotation.done"))
+    conda:
+        config["env"]["r_env"]
+    params:
+        scriptdir=config["ScriptDir"],
+        outdir=os.path.join(config["OutDir"],"{sample}", "heatmaps_test"),
+        genelist=config["GeneList"]
+    resources:
+        mem_gb=64,
+        runtime_hr=5,
+        partition="engreitz,owners"
+    shell:
+        """
+            Rscript {params.scriptdir}/calculate_GEX.R \
+                --outdir {params.outdir} \
+                --seurat {input.annotated_RDS} \
+                --genelist {params.genelist}
+        """
+
+rule createSummarySheet:
+    input:
+        test_RDS=expand(os.path.join(config["OutDir"],"{sample}", "count_split", "test_matrix","test.pflogpf.annotated.RDS"),sample=BioSamples),
+        full_RDS = expand(os.path.join(config["OutDir"],"{sample}", "{sample}.sample.info.pflogpf.annotated.RDS"),sample=BioSamples)
+    output:
+        summary_sheet=os.path.join(config["OutDir"],"summary_sheet.tsv")
+    resources:
+        mem_gb=2,
+        runtime_hr=2,
+        partition="engreitz,owners"
+    run:
+        with open(output.summary_sheet, 'w+') as f:
+            f.write("Sample\ttest_RDS\tfull_RDS\tres\n")
+            for sample in BioSamples:
+                test_RDS=os.path.join(config["OutDir"],sample,"count_split", "test_matrix","test.pflogpf.annotated.RDS")
+                full_RDS=os.path.join(config["OutDir"],sample, sample+".sample.info.pflogpf.annotated.RDS")
+                f.write(sample+"\t"+test_RDS+"\t"+full_RDS+"\t"+ "" + "\n")
+
+
+
+
+
+

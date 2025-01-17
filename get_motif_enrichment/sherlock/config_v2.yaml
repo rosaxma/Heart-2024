@@ -1,0 +1,6 @@
+use-conda: True 
+cluster: "sbatch -p engreitz,owners,normal"
+cluster-cancel: scancel
+default-resources: "runtime_hr=24"
+jobs: 100
+rerun-triggers: mtime

@@ -1,0 +1,3 @@
+Disease	StanfordSummaryStats	NiceName
+invnorm_lvef	invnorm_lvef.sumstats.gz	LVEjectionFraction
+resint_AVACM2	resint_AVACM2.sumstats.gz	AorticValveArea

@@ -1,0 +1,126 @@
+import os
+import pandas as pd
+import subprocess
+import numpy as np
+import ast
+
+sample_motif_df = pd.read_table(config["Motif_exp"], na_values="").fillna("None").set_index("Sample", drop=False)
+sample_list=list(sample_motif_df.index.values)
+usage_df=pd.read_table(config["Sample_usage"], na_values="").fillna("None").set_index("Sample", drop=False)
+##########################################################################################################
+def getUsage(wildcards):
+      return usage_df.loc[wildcards.sample,"Usage"]
+def getMotifMtx(wildcards):
+      return sample_motif_df.loc[wildcards.sample,"MotifMtx"]
+def getATACcbc(wildcards):
+      return sample_motif_df.loc[wildcards.sample,"ATAC_cbc"]
+def getMotifList(wildcards):
+      return sample_motif_df.loc[wildcards.sample,"MotifList"]
+##########################################################################################################
+rule all:
+  input:
+    expand(os.path.join(config["outdir"], "usage", "filtered_usage_table_{sample}.tsv"), sample=sample_list),
+    expand(os.path.join(config["outdir"], "motif_correlation", "{sample}", "enhancer_motif_correlation.tsv.gz"), sample=sample_list),
+    os.path.join(config["outdir"], "motif_correlation", "combined_correlated_TF_for_GEP.tsv"),
+    os.path.join(config["outdir"], "motif_correlation", "combined_all_enhancer_motif_correlation.tsv.gz")
+rule getUsage:
+    input:
+      usage_mtx=getUsage,
+      atac_cbc=getATACcbc,
+    params:
+      cell_info=config["CellInfo"],
+      low_exp_gep=config["low_exp_gep"],
+      contamination_gep=config["contamination_gep"],
+      outdir=os.path.join(config["outdir"], "usage"),
+      scripts = config["ScriptDir"],
+    output:
+      filtered_gep=os.path.join(config["outdir"], "usage", "filtered_usage_table_{sample}.tsv")
+    conda:
+      config["env"]["r_env"]
+    resources:
+      mem_gb=4,
+      runtime_hr=1,
+      partition="engreitz,normal,owners"
+    shell:
+      """
+        Rscript {params.scripts}/get_filtered_usage.R \
+          --usage_mtx {input.usage_mtx} \
+          --atac_cbc {input.atac_cbc} \
+          --outdir {params.outdir} \
+          --cell_info {params.cell_info} \
+          --low_exp_gep {params.low_exp_gep} \
+          --contamination_gep {params.contamination_gep} \
+          --sample {wildcards.sample}
+      """
+
+rule getCorrelation:
+  input:
+    filtered_gep=os.path.join(config["outdir"], "usage", "filtered_usage_table_{sample}.tsv"),
+    motif_mtx=getMotifMtx,
+    mofit_list=getMotifList
+  params:
+      outdir=os.path.join(config["outdir"], "motif_correlation", "{sample}"),
+      scripts=config["ScriptDir"],
+      gepBeta=config["GeneBeta"]
+  output:
+      enhancer_motif_cor=os.path.join(config["outdir"], "motif_correlation", "{sample}", "enhancer_motif_correlation.tsv.gz"),
+      filtered_enhancer_motif_cor=os.path.join(config["outdir"], "motif_correlation", "{sample}", "filtered_enhancer_motif_correlation.tsv")
+  conda:
+      config["env"]["r_env"]
+  resources:
+      mem_gb=16,
+      runtime_hr=10,
+      partition="engreitz,normal,owners"
+  shell:
+    """
+      Rscript {params.scripts}/get_correlation.R \
+        --filtered_gep {input.filtered_gep} \
+        --motif_mtx {input.motif_mtx} \
+        --outdir {params.outdir} \
+        --GEPBeta {params.gepBeta}
+    """
+
+rule consolidate:
+  input:
+    expand(os.path.join(config["outdir"], "motif_correlation", "{sample}", "filtered_enhancer_motif_correlation.tsv"), sample=sample_list)
+  params:
+    outdir=os.path.join(config["outdir"], "motif_correlation"),
+    scripts=config["ScriptDir"],
+  output:
+    combined_tf=os.path.join(config["outdir"], "motif_correlation", "combined_correlated_TF_for_GEP.tsv"),
+  resources:
+      mem_gb=8,
+      runtime_hr=10,
+      partition="engreitz,normal,owners"
+  run:
+    tf_df_list=[]
+    for df_path in input:
+        df=pd.read_table(df_path, sep="\t")
+        df=df.dropna(subset=["TF_rank_in_GEP"])
+        tf_df_list.append(df)
+    df_combined = pd.concat(tf_df_list)
+    df_combined.to_csv(output.combined_tf,sep="\t", index=False)
+      
+rule consolidate_all_motif:
+  input:
+    expand(os.path.join(config["outdir"], "motif_correlation", "{sample}", "enhancer_motif_correlation.tsv.gz"), sample=sample_list)
+  params:
+    outdir=os.path.join(config["outdir"], "motif_correlation"),
+    scripts=config["ScriptDir"],
+  output:
+    combined_tf=os.path.join(config["outdir"], "motif_correlation", "combined_all_enhancer_motif_correlation.tsv.gz"),
+  resources:
+      mem_gb=8,
+      runtime_hr=10,
+      partition="engreitz,normal,owners"
+  run:
+    tf_df_list=[]
+    for df_path in input:
+        df=pd.read_table(df_path, sep="\t")
+        tf_df_list.append(df)
+    df_combined = pd.concat(tf_df_list)
+    df_combined.to_csv(output.combined_tf,sep="\t", index=False, compression="gzip")
+      
+
+
+

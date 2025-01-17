@@ -1,0 +1,27 @@
+name: r_4.3.1
+channels:
+  - conda-forge
+  - bioconda
+  - defaults
+  - r
+  - sgriva
+dependencies:
+  - r-base=4.3.1
+  - r-tidyverse
+  - r-optparse
+  - r-seurat
+  - r-seuratobject
+  - r-matrix
+  - r-hdf5r
+  - r-ggplot2
+  - r-ggridges
+  - r-ggrepel
+  - r-reshape2
+  - r-ggpubr
+  - bioconductor-complexheatmap
+  - r-clustree
+  - r-data.table
+  - bioconductor-clusterprofiler
+  - r-msigdbr
+  - r-reticulate
+  - bioconductor-org.hs.eg.db

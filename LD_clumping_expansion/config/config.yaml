@@ -1,0 +1,18 @@
+BioSampleTable: "config/munged_sumstats_table.tsv"
+outdir: "outdir"
+SNP_reference: #tab delimited list of all SNPs in hg38 with the column name "chr" for chromosome ID (e.g., chr1) and "rsid" for SNP ID
+scratch: "/scratch"
+finemapped_table: "config/finemap_variant_table.tsv"
+odds_ratio_table: "odds_ratio.tsv"
+LD_expansion:
+        LD_panel: #1000G phase3 EUR hg38 reference panel 
+        r2: 0.9
+envs:
+        plink: "workflow/envs/plink.yml"
+        r_4.2: "workflow/envs/r_4.2.yml"
+CreateCS:
+        HelperFunctions: "scripts/helper_functions.R"
+        Genes: #download from: https://github.com/broadinstitute/ABC-Enhancer-Gene-Prediction/blob/2627d15cf0dccaadc222921ae6b6b5da9fdccf9a/reference/hg38/CollapsedGeneBounds.hg38.bed
+        Promoters: #download from: https://github.com/broadinstitute/ABC-Enhancer-Gene-Prediction/blob/2627d15cf0dccaadc222921ae6b6b5da9fdccf9a/reference/hg38/CollapsedGeneBounds.hg38.TSS500bp.bed 
+scriptdir: "workflow/scripts"
+MungedSumstats: "config/munged_sumstats_table_full.tsv"

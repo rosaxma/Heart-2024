@@ -1,0 +1,14 @@
+SampleSheet: "config/evaluation_table.tsv"
+OutDir: "clustering"
+AltOutDir: "clustering"
+ScriptDir: "workflow/scripts"
+SampleInfoTable: "config/FetalHeartSamples.tsv"
+EffectiveSheet: "config/combined_effective_sheets.tsv"
+minCell: 10
+GeneList: "resources/marker_gene_list.tsv"
+SexGeneList: "resources/sex_genes.tsv"
+clustering:
+        increment: 0.1
+env:
+        r_env: "workflow/envs/R_4.2.0_scRNA.yml"
+variants2regress: ""

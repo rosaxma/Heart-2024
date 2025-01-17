@@ -1,0 +1,18 @@
+SampleSheet: "config/fragment_sampleSheet.tsv"
+scriptdir: "workflow/scripts"
+OutDir: "outdir"
+Genome: hg38
+
+Gene_GTF: #download from: https://www.encodeproject.org/files/gencode.v29.primary_assembly.annotation_UCSC_names/
+cellInfo: #unzip all_sample_info_table.tsv.gz
+GEX_TPM: #unzip GEX_TPM.tsv.gz
+CreateArrowfile:
+  minTSS: 6 
+  minFrags: 1000
+
+clustering:
+        info: #unzip all_sample_info_table.tsv.gz
+        column: "celltype"
+        SampleInfoTable: "config/FetalHeartSamples.tsv"
+envs:
+        R_ATAC: "workflow/envs/R_scATAC.yaml" 

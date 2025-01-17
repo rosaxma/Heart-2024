@@ -1,0 +1,23 @@
+# working directory where ABC repo is located 
+project_home: "LDSC"
+output_dir: "output"
+SUMSTATS_table: "config/munged_sumstats_table.tsv"
+# directory to output ABC Predictions
+scripts_dir: "workflow/scripts"
+scratch: "/scratch"
+HelperFunction: "workflow/scripts/JuicerUtilities.R"
+LDSC_dir: #cloned from: https://github.com/bulik/ldsc/tree/master
+LDSC_1kG_dir: #folder containing European LD scores from 1000 genomes
+cellparamsTable: "config/CellList.tsv"
+chrom_sizes: "config/hg38.chrom.sizes"
+sample_info: # unzip all_sample_info_table.tsv.gz
+infoSheet: "config/trait_annotation.tsv"
+lead_snp_count: "config/lead_count.tsv"
+env:
+        ldsc_yml: "workflow/envs/ldsc.yml"
+        r_yml: "workflow/envs/r_4.2.0_slim.yaml"
+params_enhancer_bed:
+        prediction_file: #download from: syn64109184
+
+params_genome_annotation:
+        ldsc_baseline: #downloaded baselineLD_v2.2

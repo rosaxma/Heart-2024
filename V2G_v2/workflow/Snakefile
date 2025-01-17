@@ -1,0 +1,394 @@
+import os
+import pandas as pd
+import numpy as np
+
+TraitConfigTable=config["input"]["TraitTable"]
+trait_table= pd.read_table(TraitConfigTable, sep="\t", na_values="").fillna("None").set_index("Trait", drop=False)
+Traits=list(trait_table.index.values)
+#####################################################
+def getVar(wildcards):
+    return(trait_table.loc[wildcards.trait, "varList"])
+def getCS(wildcards):
+    return(trait_table.loc[wildcards.trait, "csList"])
+def filterByLDSC(wildcards):
+    return(trait_table.loc[wildcards.trait, "LDSC"])
+#####################################################
+rule all:
+    input:
+        os.path.join(config["outdir"], "combined_v2g","combined_Credibleset_gene_variant_info_E2G_with_info_allV2G.tsv"),
+        os.path.join(config["outdir"], "randomBG","Credibleset_gene_variant_info_E2G_with_info_complete.tsv"),
+        os.path.join(config["outdir"], "randomBG","E2GOverlap_filtered.tsv"),
+        os.path.join(config["outdir"], "randomBG", "E2GOverlapFull.tsv"),
+        os.path.join(config["outdir"], "combined_v2g","combined_Credibleset_gene_variant_info_E2G_merged_enhancers.tsv"),
+        os.path.join(config["outdir"], "combined_v2g","combined_Credibleset_gene_variant_info_E2G_with_info_merged_enh.bed"),
+        expand(os.path.join(config["outdir"], "{trait}","Credibleset_gene_variant_info_E2G_with_info.tsv"), trait=Traits),
+        expand(os.path.join(config["outdir"], "combined_v2g","combined_Credibleset_gene_variant_info_E2G_all_VGP.tsv"))
+
+rule adjust_pos:
+    input:
+        commonSNP=config["reference"]["ref_variants"],
+        input_cs=getCS,
+        input_var=getVar
+    params:
+        trait_list=config["filters"]["TraitRefFile"],
+        outdir=os.path.join(config["outdir"], "{trait}"),
+        commonSNPColName=config["reference"]["ref_variants_SNP_colname"],
+        finemappedSNPColName=config["input"]["variantColName"],
+        finemappedChrColName=config["input"]["variantChrColName"],
+        csSNPColName=config["input"]["csLeadColName"],
+        csChrColName=config["input"]["csLeadChrColName"],
+        output_dir=os.path.join(config["outdir"], "{trait}", "overlap"), 
+        script_dir=config["script_dir"], 
+    output:
+        adjusted_input_var=os.path.join(config["outdir"], "{trait}", "adjusted_inputs", "variant.list.tsv"),
+        adjusted_input_cs=os.path.join(config["outdir"], "{trait}", "adjusted_inputs", "cs.list.tsv")
+    resources:
+        mem_gb=32,
+        runtime_hr=3
+    conda:
+        config["env"]["r_env"]
+    shell:
+        """
+            Rscript {params.script_dir}/add_hg38_pos_v2.R \
+                --commonbgSNPs {input.commonSNP} \
+                --finemappedSNPs {input.input_var} \
+                --cs {input.input_cs} \
+                --StandardSNPColName {params.commonSNPColName} \
+                --StandardPosColName end \
+                --StandardChrColName chr \
+                --finemappedSNPColName {params.finemappedSNPColName} \
+                --finemappedChrColName {params.finemappedChrColName} \
+                --csSNPColName {params.csSNPColName} \
+                --csChrColName {params.csChrColName} \
+                --outputVariant {output.adjusted_input_var} \
+                --outputCS {output.adjusted_input_cs} \
+                --traits {params.trait_list}
+        """
+
+
+rule intersectWithE2G:
+    """ Intersect variants with E2G enhancers"""
+    input:
+        adjusted_input_var=os.path.join(config["outdir"], "{trait}", "adjusted_inputs", "variant.list.tsv"),
+        abcPred=config["E2GPRED"]
+    output:
+        E2G_overlap=os.path.join(config["outdir"], "{trait}", "E2GOverlapFull.tsv"),
+        tmp_file=os.path.join(config["SCRATCH"], "{trait}", "tmp_dir_creater"), 
+    params:
+        chrSizes=config["chrSizes"],
+        scratch=os.path.join(config["SCRATCH"], "{trait}")
+    resources:
+        mem_gb=32,
+        runtime_hr=3
+    shell:
+        """
+        set +o pipefail;
+        echo "create dir" > {output.tmp_file} 
+        zcat {input.abcPred} |grep -v "promoter"|sort -V -k1,1 -k2,2 | gzip  > {params.scratch}/tmp_abc.gz
+
+        zcat {params.scratch}/tmp_abc.gz |head -1 |tr \'\\n\' \'\\t\'> {output.E2G_overlap}
+
+        head -1 {input.adjusted_input_var} >> {output.E2G_overlap}
+
+        zcat {params.scratch}/tmp_abc.gz |sed 1d > {params.scratch}/tmp_abc_noheader.tsv
+
+        sed 1d {input.adjusted_input_var} |sed 's/\t$//' |bedtools intersect -wa -wb -a {params.scratch}/tmp_abc_noheader.tsv -b stdin >> {output.E2G_overlap}
+        """
+
+rule intersecRandomBGWithE2G:
+    """ Intersect variants with E2G enhancers"""
+    input:
+        randomBG=config["RandomBG"],
+        abcPred=config["E2GPRED"]
+    output:
+        E2G_overlap=os.path.join(config["outdir"], "randomBG", "E2GOverlapFull.tsv"),
+        tmp_file=os.path.join(config["SCRATCH"], "randomBG", "tmp_dir_creater"), 
+    params:
+        chrSizes=config["chrSizes"],
+        scratch=os.path.join(config["SCRATCH"], "randomBG")
+    resources:
+        mem_gb=32,
+        runtime_hr=3
+    shell:
+        """
+        set +o pipefail;
+        echo "create dir" > {output.tmp_file} 
+        zcat {input.abcPred} |grep -v "promoter"|sort -V -k1,1 -k2,2 | gzip  > {params.scratch}/tmp_abc.gz
+
+        zcat {params.scratch}/tmp_abc.gz |head -1 |tr \'\\n\' \'\\t\'> {output.E2G_overlap}
+
+        head -1 {input.randomBG} >> {output.E2G_overlap}
+
+        zcat {params.scratch}/tmp_abc.gz |sed 1d > {params.scratch}/tmp_abc_noheader.tsv
+
+        sed 1d {input.randomBG} |sed 's/\t$//' |sort -V -k1,1 -k2,2 |bedtools intersect -wa -wb -a {params.scratch}/tmp_abc_noheader.tsv -b stdin -sorted >> {output.E2G_overlap}
+        """
+
+rule processE2G:
+    input:
+        E2G_overlap=os.path.join(config["outdir"], "{trait}", "E2GOverlapFull.tsv"),
+        UBQ_genes=config["UbiquitouslyExpressedGenes"],
+        TPM=config["ExternalInfo"]["TPM"],
+    params:
+        script_dir=config["script_dir"], 
+        outDir=os.path.join(config["outdir"], "{trait}"),
+        removeNonCoding=config["RemoveNonCoding"],
+        finemappedChrColName=config["input"]["variantLeadColName"],
+        gene_reference_file=config["filters"]["GeneRefFile"],
+        celltype_reference_file=config["filters"]["Celltype"]
+
+    output:
+        filtered_E2G=os.path.join(config["outdir"], "{trait}","E2GOverlap_filtered.tsv"),
+        var_bed=os.path.join(config["outdir"], "{trait}","Credibleset_gene_variant_info_E2G_only.bed")
+    resources:
+        mem_gb=16,
+        runtime_hr=3
+    conda:
+        config["env"]["r_env"]
+    shell:
+        """
+            Rscript {params.script_dir}/process_E2G_v2.R \
+                --E2GOverlap {input.E2G_overlap} \
+                --outdir {params.outDir} \
+                --removeNonCoding {params.removeNonCoding} \
+                --UBQ_genes {input.UBQ_genes} \
+                --TPM {input.TPM} \
+                --LeadCol {params.finemappedChrColName} \
+                --GeneReference {params.gene_reference_file} \
+                --CelltypeReference {params.celltype_reference_file}
+        """
+
+rule processRandomBGE2G:
+    input:
+        E2G_overlap=os.path.join(config["outdir"], "randomBG", "E2GOverlapFull.tsv"),
+        UBQ_genes=config["UbiquitouslyExpressedGenes"],
+        TPM=config["ExternalInfo"]["TPM"]
+    params:
+        script_dir=config["script_dir"], 
+        outDir=os.path.join(config["outdir"], "randomBG"),
+        removeNonCoding=config["RemoveNonCoding"],
+        finemappedChrColName=config["RandomBGLeadCol"],
+        gene_reference_file=config["filters"]["GeneRefFile"],
+        celltype_reference_file=config["filters"]["Celltype"]
+    output:
+        filtered_E2G=os.path.join(config["outdir"], "randomBG","E2GOverlap_filtered.tsv"),
+        var_bed=os.path.join(config["outdir"], "randomBG","Credibleset_gene_variant_info_E2G_only.bed")
+    resources:
+        mem_gb=16,
+        runtime_hr=3
+    conda:
+        config["env"]["r_env"]
+    shell:
+        """
+            Rscript {params.script_dir}/process_E2G_v2.R \
+                --E2GOverlap {input.E2G_overlap} \
+                --outdir {params.outDir} \
+                --removeNonCoding {params.removeNonCoding} \
+                --UBQ_genes {input.UBQ_genes} \
+                --TPM {input.TPM} \
+                --LeadCol {params.finemappedChrColName} \
+                --GeneReference {params.gene_reference_file} \
+                --CelltypeReference {params.celltype_reference_file}
+        """
+
+
+rule variantDetails:
+    input:
+        E2G_overlap=os.path.join(config["outdir"], "{trait}", "E2GOverlap_filtered.tsv"),
+        GEP_in_cells=config["ExternalInfo"]["GEPsInCelltypes"],
+        GEP_genes=config["ExternalInfo"]["GEP_genes"],
+        LDSC=config["ExternalInfo"]["LDSC"],
+        variants=os.path.join(config["outdir"], "{trait}", "adjusted_inputs", "variant.list.tsv"),
+    params:
+        script_dir=config["script_dir"], 
+        outDir=os.path.join(config["outdir"], "{trait}"),
+        scoreCol=config["ScoreCol"],
+        complete=filterByLDSC,
+        knownGenes=config["known_causal"],
+        removeNonCoding=config["RemoveNonCoding"],
+        GEPRegulators=config["Enrichment"]["GEP_TF_regulators"],
+        E2G_filter=config["filters"]["E2G"]
+    output:
+        var_prob_E2G=os.path.join(config["outdir"], "{trait}","Credibleset_gene_variant_info_E2G_with_info.tsv"),
+        var_prob_E2G_complete=os.path.join(config["outdir"], "{trait}","Credibleset_gene_variant_info_E2G_with_info_complete.tsv")
+    resources:
+        mem_gb=64,
+        runtime_hr=3
+    conda:
+            config["env"]["r_env"]
+    shell:
+            """
+                Rscript {params.script_dir}/getVariantDetails_simple_v2.R \
+                    --E2GOverlap {input.E2G_overlap} \
+                    --GEPInCells {input.GEP_in_cells} \
+                    --GEPTopGene {input.GEP_genes} \
+                    --LDSC_enrichment {input.LDSC} \
+                    --outdir {params.outDir} \
+                    --scoreCol {params.scoreCol} \
+                    --complete {params.complete} \
+                    --KnownGenes {params.knownGenes} \
+                    --GEP_TF_regulators {params.GEPRegulators} \
+                    --E2GFilter {params.E2G_filter} \
+                    --variantList {input.variants}
+            """
+
+rule randomBG_variantDetails:
+    input:
+        E2G_overlap=os.path.join(config["outdir"], "randomBG", "E2GOverlap_filtered.tsv"),
+        GEP_in_cells=config["ExternalInfo"]["GEPsInCelltypes"],
+        GEP_genes=config["ExternalInfo"]["GEP_genes"],
+        #EnhancerUniqueness=config["ExternalInfo"]["EnhancerUniqueness"],
+        LDSC=config["ExternalInfo"]["LDSC"],
+        variants=config["RandomBG"],
+    params:
+        script_dir=config["script_dir"], 
+        outDir=os.path.join(config["outdir"], "randomBG"),
+        scoreCol=config["ScoreCol"],
+        complete="FALSE",
+        knownGenes=config["known_causal"],
+        removeNonCoding=config["RemoveNonCoding"],
+        GEPRegulators=config["Enrichment"]["GEP_TF_regulators"],
+        E2G_filter=config["filters"]["E2G"]
+    output:
+        var_prob_E2G=os.path.join(config["outdir"], "randomBG","Credibleset_gene_variant_info_E2G_with_info.tsv"),
+        var_prob_E2G_complete=os.path.join(config["outdir"], "randomBG","Credibleset_gene_variant_info_E2G_with_info_complete.tsv")
+    resources:
+        mem_gb=64,
+        runtime_hr=3
+    conda:
+            config["env"]["r_env"]
+    shell:
+            """
+                Rscript {params.script_dir}/getVariantDetails_simple_randomBG.R \
+                    --E2GOverlap {input.E2G_overlap} \
+                    --GEPInCells {input.GEP_in_cells} \
+                    --GEPTopGene {input.GEP_genes} \
+                    --LDSC_enrichment {input.LDSC} \
+                    --outdir {params.outDir} \
+                    --scoreCol {params.scoreCol} \
+                    --complete {params.complete} \
+                    --KnownGenes {params.knownGenes} \
+                    --GEP_TF_regulators {params.GEPRegulators} \
+                    --E2GFilter {params.E2G_filter} \
+                    --variantList {input.variants}
+            """
+
+rule combine_variants_E2G:
+    input:
+        e2g_info=expand(os.path.join(config["outdir"], "{trait}","Credibleset_gene_variant_info_E2G_with_info_complete.tsv"), trait=Traits)
+    output:
+        combined_E2G_info=os.path.join(config["outdir"], "combined_v2g","combined_Credibleset_gene_variant_info_E2G_with_info.tsv"),
+        combined_E2G_enh=os.path.join(config["outdir"], "combined_v2g","combined_Credibleset_gene_variant_info_E2G_with_info_enh.bed"),
+        combined_E2G_merged_enh=os.path.join(config["outdir"], "combined_v2g","combined_Credibleset_gene_variant_info_E2G_with_info_merged_enh.bed")
+    resources:
+        mem_gb=4,
+        runtime_hr=1
+    shell:
+        """
+        counter=0
+        for file in {input.e2g_info}
+        do 
+            counter=$((counter+1))
+            if [ ${{counter}} -eq 1 ]; then
+                cat ${{file}} > {output.combined_E2G_info}
+            else
+                sed 1d ${{file}} >> {output.combined_E2G_info}
+            fi
+        done
+        sed 1d {output.combined_E2G_info} |cut -f1,2,3 |sort|uniq | awk -F"\t" '{{ print $1"\t"$2"\t"$3"\t"$1"|"$2"|"$3 }}' | sort -k1,1 -k2,2n > {output.combined_E2G_enh}
+        cat {output.combined_E2G_enh}|uniq | bedtools merge -i stdin -c 4 -o collapse -delim ";" > {output.combined_E2G_merged_enh}
+        """
+
+rule combine_variants_E2G_all_V2G:
+    input:
+         expand(os.path.join(config["outdir"], "{trait}","Credibleset_gene_variant_info_E2G_with_info.tsv"), trait=Traits)
+    output:
+         os.path.join(config["outdir"], "combined_v2g","combined_Credibleset_gene_variant_info_E2G_with_info_allV2G.tsv")
+    resources:
+         mem_gb=4,
+         runtime_hr=1
+    shell:
+        """
+        counter=0
+        for file in {input}
+        do
+           counter=$((counter+1))
+           if [ ${{counter}} -eq 1 ]; then
+               cat ${{file}} > {output}
+           else
+               sed 1d ${{file}} >> {output}
+           fi
+        done
+       """
+
+rule combine_variants_E2G_allVGP:
+    input:
+        e2g_info=expand(os.path.join(config["outdir"], "{trait}","Credibleset_gene_variant_info_E2G_with_info.tsv"),trait=Traits),
+        e2g=expand(os.path.join(config["outdir"], "{trait}", "E2GOverlap_filtered.tsv"),trait=Traits),
+        adjusted_input_var=expand(os.path.join(config["outdir"], "{trait}", "adjusted_inputs", "variant.list.tsv"),trait=Traits)
+    output:
+        combined_E2G_info=os.path.join(config["outdir"], "combined_v2g","combined_Credibleset_gene_variant_info_E2G_all_VGP.tsv"),
+        combined_E2G=os.path.join(config["outdir"], "combined_v2g","combined_E2GOverlapFull.tsv"),
+        combined_Var=os.path.join(config["outdir"], "combined_v2g","combined_adjusted_variants.tsv"),
+        tmp_file=os.path.join(config["SCRATCH"], "tmp_combined_varlist.tsv"),
+    resources:
+        mem_gb=4,
+        runtime_hr=1
+    shell:
+        """
+        counter=0
+        for file in {input.e2g_info}
+        do 
+            counter=$((counter+1))
+            if [ ${{counter}} -eq 1 ]; then
+                cat ${{file}} > {output.combined_E2G_info}
+            else
+                sed 1d ${{file}} >> {output.combined_E2G_info}
+            fi
+        done
+
+        counter=0
+        for file in {input.e2g}
+        do 
+            counter=$((counter+1))
+            if [ ${{counter}} -eq 1 ]; then
+                cat ${{file}} > {output.combined_E2G}
+            else
+                sed 1d ${{file}} >> {output.combined_E2G}
+            fi
+        done
+
+        counter=0
+        for file in {input.adjusted_input_var}
+        do 
+            counter=$((counter+1))
+            if [ ${{counter}} -eq 1 ]; then
+                sed 1d ${{file}} |cut -f6 > {output.tmp_file}
+            else
+                sed 1d ${{file}} |cut -f6 >> {output.tmp_file}
+            fi
+        done
+        cat {output.tmp_file} |sort |uniq >> {output.combined_Var}       
+        """
+
+rule add_merged_enh_prob:
+    input:
+        combined_E2G_merged_enh=os.path.join(config["outdir"], "combined_v2g","combined_Credibleset_gene_variant_info_E2G_with_info_merged_enh.bed"),
+        combined_E2G_info=os.path.join(config["outdir"], "combined_v2g","combined_Credibleset_gene_variant_info_E2G_with_info.tsv")
+    output:
+        combined_E2G_merged_prob=os.path.join(config["outdir"], "combined_v2g","combined_Credibleset_gene_variant_info_E2G_merged_enhancers.tsv")
+    params:
+        script_dir=config["script_dir"],
+    resources:
+        mem_gb=8,
+        runtime_hr=3
+    conda:
+        config["env"]["r_env"]
+    shell:
+        """
+        Rscript {params.script_dir}/add_merged_enh_simple.R \
+            --combined_E2G_info {input.combined_E2G_info} \
+            --combined_enh {input.combined_E2G_merged_enh} \
+            --outfile {output.combined_E2G_merged_prob}
+        """
+

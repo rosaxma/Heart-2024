@@ -1,0 +1,10 @@
+Motif_exp: "config/motif_exp_sampleSheet.tsv"
+Sample_usage: #unzip if necessary: config/usage_table.tsv"
+CellInfo: "config/all_sample_info_table.tsv"
+low_exp_gep: "config/low_exp_gep.tsv"
+contamination_gep: "config/programs2remove_contamination.tsv"
+ScriptDir: "workflow/scripts"
+GeneBeta: #unzip config/motif_enrichment_feature_mtx.tsv.gz
+outdir: "outdir"
+env:
+        r_env: "workflow/envs/r_4.2.0_slim.yaml"

@@ -1,0 +1,2 @@
+Sample	GeneIDdict	topGene2000_NormCounts	Features	SeuratObject
+ACM	outdir/ACM/barcode.dict.RDS	outdir/ACM/topGene2000/ACM_allK.norm_counts.h5ad	Phase	ACM.pflogpf.RDS
