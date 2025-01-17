@@ -28,7 +28,7 @@ The snakemake pipelines were designed to run on [Sherlock](https://www.sherlock.
   
 ## Doublet removal
   ### Doublet_removal_Snakemake
-  The code for rerunning Scrublet if specified in the SampleSheet (when "Doublet_threshold" is not "Default"), removing the union of doublets identified by Scrublet, [Archr](#multiomic_atac_qc_Snakemake), [Amulet](#multiomic_atac_qc_Snakemake), and [Souporcell])(#rna_alignment_snakemake). 
+  The code for rerunning Scrublet if specified in the SampleSheet (when "Doublet_threshold" is not "Default"), removing the union of doublets identified by Scrublet, [Archr](#multiomic_atac_qc_Snakemake), [Amulet](#multiomic_atac_qc_Snakemake), and [Souporcell](#rna_alignment_snakemake). 
 ## Clustering and cell type annotation
   ### evaluation_Snakemake
   The code for merging filtered Seurat objects, normalizing the resulting count matrices, and performing cell clustering at various resolutions. The pipeline generates heatmaps reflecting marker gene expression in the clusters and tentatively labels clusters by mapping the cells to an annotated earlier version of the heart map. 
