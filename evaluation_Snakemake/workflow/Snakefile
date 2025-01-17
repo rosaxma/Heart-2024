@@ -1,0 +1,262 @@
+import os
+import pandas as pd
+import subprocess
+import numpy as np
+import csv
+import ast
+BioSampleConfigFile=config["SampleSheet"]
+BioSamples_config = pd.read_table(BioSampleConfigFile, na_values="").fillna("None").set_index("Sample", drop=False)
+BioSamples=list(BioSamples_config.index.values)
+model_dictionary=ast.literal_eval(config["model_dictionary"])
+model_names=model_dictionary.keys()
+
+rule all:
+    input:
+        expand(os.path.join(config["OutDir"], "{sample}","marker_highlights","GEXbyCluster.done"), sample=BioSamples),
+        combined_SeuratObject=expand(os.path.join(config["OutDir"], "{sample}/combined_SeuratObject_doublet_removed.RDS"),sample=BioSamples),
+        transformed_mtx = expand(os.path.join(config["OutDir"],"{sample}/combined_matrix/transformation/matrix/matrix.mtx.gz"), sample=BioSamples),
+	    clustered_filtered_RDS_pic_res = expand(os.path.join(config["OutDir"],"{sample}/combined_SeuratObject_doublet_removed.pflogpf.source.cluster.pick.res.RDS"), sample=BioSamples),
+	    clusterTree = expand(os.path.join(config["OutDir"],"{sample}/clustree.pdf"), sample=BioSamples),
+	    combined_effective_sheets=expand(os.path.join(config["OutDir"], "{sample}/combined_effective_sheets.tsv"),sample=BioSamples),
+	    transferred_annotation=expand(os.path.join(config["OutDir"], "{sample}", "transferred_annotations", "{model}_annotation.tsv"),sample=BioSamples, model=model_names)
+
+def get_seurat_objects(wildcards):
+    location_sheet_path=BioSamples_config.loc[wildcards.sample,"LocationSheet"]
+    location_sheet=pd.read_table(location_sheet_path,na_values="").fillna("None").set_index("Sample", drop=False)
+    seurat_list=[]
+    for id in location_sheet.index:
+        if location_sheet.loc[id, "multiomicRDS"] != "None":
+            seurat_list.append(location_sheet.loc[id, "multiomicRDS"])
+        else:
+            seurat_list.append(location_sheet.loc[id, "GEXRDS"])
+
+    return(seurat_list)
+def get_seurat_objects_string(wildcards):
+    seurat_list=get_seurat_objects(wildcards)
+    return(",".join(seurat_list))
+def get_model_path(wildcards):
+    return(model_dictionary.get(wildcards.model))
+
+def get_effective_sheets(wildcards):
+    location_sheet_path=BioSamples_config.loc[wildcards.sample,"LocationSheet"]
+    location_sheet=pd.read_table(location_sheet_path,na_values="").fillna("None").set_index("Sample", drop=False)
+    effective_sheet_list=location_sheet["EffectiveSheet"].tolist()
+    return(effective_sheet_list)
+
+def get_effective_sheets_string(wildcards):
+    effective_sheet_list=get_effective_sheets(wildcards)
+    return(",".join(effective_sheet_list))
+
+def get_res_string(wildcards):
+    return(BioSamples_config.loc[wildcards.sample,"ResolutionRange"])
+
+print(BioSamples_config)
+
+rule merge_effectiveSheets:
+    input:
+        all_effectiveSheets=get_effective_sheets
+    output:
+        combined_effective_sheets=os.path.join(config["OutDir"], "{sample}/combined_effective_sheets.tsv"),
+        combined_effective_sheets_log=os.path.join(config["OutDir"], "{sample}/combined_effective_sheets_input_log.tsv"),
+    params:
+        scriptdir=config["ScriptDir"],
+        outdir=os.path.join(config["OutDir"], "{sample}"),
+        all_SeuratObjects=get_effective_sheets_string
+    conda:
+        config["env"]["r_env"]
+    resources:
+        mem_gb=8,
+        runtime_hr=1
+    shell:
+        """
+        Rscript {params.scriptdir}/combine_effectiveSheets.R \
+            --outdir {params.outdir} \
+            --allEffectiveSheets {params.all_SeuratObjects};
+        echo {params.all_SeuratObjects} > {output.combined_effective_sheets_log}
+        """
+
+rule merge:
+    input:
+        all_SeuratObjects=get_seurat_objects,
+        combined_effective_sheets=os.path.join(config["OutDir"], "{sample}/combined_effective_sheets.tsv")
+    output:
+        combined_SeuratObject=os.path.join(config["OutDir"], "{sample}/combined_SeuratObject_doublet_removed.RDS"),
+        combined_SeuratObject_log=os.path.join(config["OutDir"], "{sample}/combined_SeuratObject_doublet_removed_input_log.tsv"),
+        filtered_matrix_gz = os.path.join(config["OutDir"],"{sample}/combined_matrix/matrix.mtx.gz"),
+        filtered_gene_gz = os.path.join(config["OutDir"],"{sample}/combined_matrix/features.tsv.gz"),
+        filtered_barcode_gz = os.path.join(config["OutDir"],"{sample}/combined_matrix/barcodes.tsv.gz"),
+    params:
+        scriptdir=config["ScriptDir"],
+        outdir=os.path.join(config["OutDir"], "{sample}"),
+        all_SeuratObjects=get_seurat_objects_string
+    conda:
+        config["env"]["r_env"]
+    resources:
+        mem_gb=64,
+        runtime_hr=24
+    shell:
+        """
+        Rscript {params.scriptdir}/combine_SeuratObject.R \
+            --outdir {params.outdir} \
+            --allSeuratObjects {params.all_SeuratObjects} \
+            --effectiveSheet {input.combined_effective_sheets};
+        gzip {params.outdir}/combined_matrix/matrix.mtx;
+        gzip {params.outdir}/combined_matrix/features.tsv;
+        gzip {params.outdir}/combined_matrix/barcodes.tsv;
+        echo {params.all_SeuratObjects} > {output.combined_SeuratObject_log}
+        """
+
+
+rule transformation:
+     input:
+        filtered_matrix_gz = os.path.join(config["OutDir"],"{sample}/combined_matrix/matrix.mtx.gz"),
+        filtered_gene_gz = os.path.join(config["OutDir"],"{sample}/combined_matrix/features.tsv.gz"),
+        filtered_barcode_gz = os.path.join(config["OutDir"],"{sample}/combined_matrix/barcodes.tsv.gz")
+     output:
+        metrics=os.path.join(config["OutDir"],"{sample}/combined_matrix/transformation/combined_metrics.json"),
+        transformed_mtx=os.path.join(config["OutDir"],"{sample}/combined_matrix/transformation/matrix/matrix.mtx.gz")
+     params:
+        outdir=os.path.join(config["OutDir"],"{sample}/combined_matrix/transformation"),
+        scriptdir=config["ScriptDir"]
+     resources:
+        mem_gb=64,
+        runtime_hr=10
+     shell:
+        """
+        python {params.scriptdir}/metrics_matrix.py {input.filtered_matrix_gz} {output.metrics};
+        python {params.scriptdir}/norm_sparse.py {input.filtered_matrix_gz} {params.outdir};
+        rm -f {params.outdir}/*mtx.gz;
+        gzip {params.outdir}/*mtx;
+        python {params.scriptdir}/metrics_methods_sparse.py {input.filtered_matrix_gz} {params.outdir}/pf_log_pf.mtx.gz {output.metrics};
+        ln -s {params.outdir}/*.mtx.gz {params.outdir}/matrix/matrix.mtx.gz;
+        cp {input.filtered_gene_gz} {params.outdir}/matrix/;
+        cp {input.filtered_barcode_gz} {params.outdir}/matrix/;
+        """
+
+rule updateSeuratObject:
+    input:
+        filtered_RDS = os.path.join(config["OutDir"], "{sample}/combined_SeuratObject_doublet_removed.RDS"),
+        transformed_mtx = os.path.join(config["OutDir"],"{sample}/combined_matrix/transformation/matrix/matrix.mtx.gz")
+    output:
+        updated_filtered_RDS = os.path.join(config["OutDir"],"{sample}/combined_SeuratObject_doublet_removed.pflogpf.RDS"),
+    conda:
+        config["env"]["r_env"]
+    params:
+        scriptdir=config["ScriptDir"],
+        transformed_mtx = os.path.join(config["OutDir"],"{sample}/combined_matrix/transformation/matrix"),
+    resources:
+        mem_gb=64,
+        runtime_hr=10
+    shell:
+        """
+        Rscript {params.scriptdir}/updateSeurat.R \
+        --inputSeuratObject {input.filtered_RDS} \
+        --transformed_mtx {params.transformed_mtx}
+        """
+rule updateSeuratInfo:
+    input:
+        updated_filtered_RDS = os.path.join(config["OutDir"],"{sample}/combined_SeuratObject_doublet_removed.pflogpf.RDS"),
+        combined_effective_sheets=os.path.join(config["OutDir"], "{sample}/combined_effective_sheets.tsv"),
+        transferred_annotation=expand(os.path.join(config["OutDir"], "{{sample}}", "transferred_annotations", "{model}_annotation.tsv"),model=model_names),
+        genelist=config["GeneList"]
+    params:
+        scriptdir=config["ScriptDir"],
+        outdir = os.path.join(config["OutDir"], "{sample}"),
+        transferred_annotation=",".join(expand(os.path.join(config["OutDir"], "{{sample}}", "transferred_annotations", "{model}_annotation.tsv"), model=model_names))
+    output:
+        seurat_source= os.path.join(config["OutDir"],"{sample}", "combined_SeuratObject_doublet_removed.pflogpf.source.RDS"),
+        gex_tsv = os.path.join(config["OutDir"],"{sample}","GEX_TPM_sex.tsv"),
+        gex_pdf = os.path.join(config["OutDir"],"{sample}","GEX_TPM_sex.pdf")
+    resources:
+        mem_gb=32,
+        runtime_hr=10
+    conda:
+        config["env"]["r_env"]
+    shell:
+        """
+        Rscript {params.scriptdir}/updateSeurat_exp.R \
+            --outdir {params.outdir} \
+            --seurat {input.updated_filtered_RDS} \
+            --effectiveSheet {input.combined_effective_sheets} \
+            --genelist {input.genelist} \
+            --annotations {params.transferred_annotation}
+        """
+rule annotate:
+    input:
+        filtered_matrix_gz = os.path.join(config["OutDir"],"{sample}/combined_matrix/matrix.mtx.gz"),
+        filtered_gene_gz = os.path.join(config["OutDir"],"{sample}/combined_matrix/features.tsv.gz"),
+        filtered_barcode_gz = os.path.join(config["OutDir"],"{sample}/combined_matrix/barcodes.tsv.gz"),
+        trained_model = get_model_path,
+    params:
+        scriptdir=config["ScriptDir"],
+        outdir = os.path.join(config["OutDir"], "{sample}", "transferred_annotations"),
+        model_name="{model}"
+    output:
+        transferred_annotation=os.path.join(config["OutDir"], "{sample}", "transferred_annotations", "{model}_annotation.tsv")
+    resources:
+        mem_gb=64,
+        runtime_hr=10
+    conda:
+        config["env"]["celltypist"]
+    shell:
+        """
+        python {params.scriptdir}/celltypist_annotation.py \
+            --trained_model {input.trained_model} \
+            --model_name {params.model_name} \
+            --mtx {input.filtered_matrix_gz} \
+            --gene_list {input.filtered_gene_gz} \
+            --barcode_list {input.filtered_barcode_gz} \
+            --transpose_input True \
+            --outdir {params.outdir}
+        """
+
+rule clustering:
+     input: 
+         updated_filtered_RDS = os.path.join(config["OutDir"],"{sample}","combined_SeuratObject_doublet_removed.pflogpf.source.RDS"),
+     params:
+         scriptdir=config["ScriptDir"],
+         outdir=os.path.join(config["OutDir"],"{sample}"),
+         res_string=get_res_string,
+         increment=config["clustering"]["increment"],
+     output:
+         clustered_filtered_RDS = os.path.join(config["OutDir"],"{sample}/combined_SeuratObject_doublet_removed.pflogpf.source.cluster.pick.res.RDS"),
+         clusterTree = os.path.join(config["OutDir"],"{sample}/clustree.pdf"),
+     resources:
+         mem_gb=128,
+         runtime_hr=24
+     conda:
+         config["env"]["r_env"]
+     shell:
+         """
+         Rscript {params.scriptdir}/clustering.R \
+             --outdir {params.outdir} \
+             --inputSeuratObject {input.updated_filtered_RDS} \
+             --res_range {params.res_string} \
+             --increment {params.increment} 
+         """
+rule GEXbyCluster:
+    input:
+        clustered_filtered_RDS = os.path.join(config["OutDir"],"{sample}/combined_SeuratObject_doublet_removed.pflogpf.source.cluster.pick.res.RDS"),
+    params:
+        res_string=get_res_string,
+        increment=config["clustering"]["increment"],
+        scriptdir=config["ScriptDir"],
+        gene_list=config["gene_marker"],
+        outdir=os.path.join(config["OutDir"], "{sample}","marker_highlights")
+    conda:
+        config["env"]["r_env"]
+    resources:
+        mem_gb=150, 
+        runtime_hr=5
+    output:
+        done_check=os.path.join(config["OutDir"], "{sample}","marker_highlights","GEXbyCluster.done")
+    shell:
+        """
+        Rscript {params.scriptdir}/calculate_GEX.R \
+             --seurat {input.clustered_filtered_RDS} \
+             --res_range {params.res_string} \
+             --increment {params.increment} \
+             --genelist {params.gene_list} \
+             --outdir {params.outdir};
+        echo done > {output.done_check}
+        """

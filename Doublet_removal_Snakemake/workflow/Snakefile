@@ -1,0 +1,650 @@
+import os
+import pandas as pd
+import subprocess
+import numpy as np
+import csv
+
+BioSampleConfigFile=config["SampleSheet"]
+BioSamples_config = pd.read_table(BioSampleConfigFile, na_values="").fillna("None").set_index("Sample", drop=False)
+BioSamples=list(BioSamples_config.index.values)
+print(BioSamples)
+#############################################################################
+scrublet_rerun=BioSamples_config[BioSamples_config["Doublet_threshold"]!= "Default"].index.values
+print(BioSamples_config.head)
+print(scrublet_rerun)
+ATAC=BioSamples_config[BioSamples_config["ATAC"]=="T"].index.values
+SampleDemux=BioSamples_config[BioSamples_config["SampleDemux_table"]!="None"].index.values
+print(ATAC)
+Demux=BioSamples_config[BioSamples_config["Assignment"]!="None"].index.values
+
+summary_files=[]
+
+print(ATAC.size)
+
+if ATAC.size > 0:
+    summary_files=[os.path.join(config["alt_OutDir"],"Combined_ATAC_QC_post_doublet_removal.tsv"),os.path.join(config["alt_OutDir"],"Combined_GEX_QC_post_doublet_removal.tsv"),os.path.join(config["OutDir"],"merged_nfrag_nUMI.pdf"),os.path.join(config["OutDir"],"merged_ArchR_UMAP.pdf"),os.path.join(config["alt_OutDir"], "Sample_location_summary.tsv")]
+    print("here")
+else:
+    summary_files=[os.path.join(config["alt_OutDir"], "Sample_location_summary.tsv")]
+
+def getDict(wildcards):
+    return(BioSamples_config.loc[wildcards.sample,"Assignment"])
+print(summary_files)
+#############################################################################
+rule all:
+    input:
+        summary_files,
+        doublet_table = expand(os.path.join(config["OutDir"], "{sample}/Scrublet_doublets/manual_threshold/{sample}_scrublet_output_table.csv"), sample=scrublet_rerun),
+        scrubletCalls=expand(os.path.join(config["OutDir"], "{sample}/doublet_calls", "ScrubletCalls.csv"), sample=BioSamples),
+        doublet_barcodes=expand(os.path.join(config["alt_OutDir"], "{sample}/doublet_calls", "All_doublets.csv"),sample=BioSamples),
+        doublet_summary=os.path.join(config["alt_OutDir"], "Doublet_summary.csv"),
+        doublet_removed=expand(os.path.join(config["alt_OutDir"], "{sample}/bg_removal/QC/{sample}_SeuratObject_doublet_removed.RDS"),sample=BioSamples),
+        doublet_removed_QC=expand(os.path.join(config["alt_OutDir"], "{sample}/bg_removal/QC/{sample}_gex_data_QC_post_doublet_removal.tsv"),sample=BioSamples),
+        doublet_barcodes_df=expand(os.path.join(config["alt_OutDir"], "{sample}/doublet_calls", "All_doublets_by_method.tsv"),sample=BioSamples),
+        doublet_info=os.path.join(config["alt_OutDir"], "Doublet_composition_summary.csv"),
+        doublet_removed_UMAP=expand(os.path.join(config["alt_OutDir"], "{sample}/bg_removal/QC/{sample}_SeuratObject_doublet_removed_multiomic_UMAP.RDS"),sample=ATAC),
+        doublet_removed_QC_ATAC=expand(os.path.join(config["alt_OutDir"], "{sample}/bg_removal/QC/{sample}_ATAC_QC_post_doublet_removal_multiomic.tsv"),sample=ATAC),
+        doublet_removed_figure_ATAC=expand(os.path.join(config["alt_OutDir"], "{sample}/bg_removal/QC/{sample}_doublet_removed_multiomic_ATAC.pdf"),sample=ATAC),
+        umap=expand(os.path.join(config["alt_OutDir"], "{sample}/ArchRProject_multiome/{sample}_UMAP.pdf"),sample=ATAC),
+        atac_cell_quality_summary_sheets=expand(os.path.join(config["alt_OutDir"], "{sample}/doublet_calls/", "{sample}_ATAC_cell_quality_sheet.tsv"),sample=ATAC),
+        atac_barcodes=expand(os.path.join(config["alt_OutDir"],"{sample}/multiome_barcodes/ATAC_barcodes_for_archr.tsv"),sample=ATAC),
+        merged_doublet_line_plot = os.path.join(config["OutDir"],"manual_threshold_merged_scrublet_line_plot.pdf"),
+        doublet_summary_sheet= expand(os.path.join(config["alt_OutDir"], "{sample}/doublet_calls/{sample}_doublet_summary_sheet_with_sample_origin.tsv"),sample=BioSamples),
+
+
+def getUnzippedtsv(wildcards):
+    if wildcards.sample in scrublet_rerun:
+        return os.path.join(BioSamples_config.loc[wildcards.sample, "ScrubletPath"], wildcards.sample, "bg_removal/transformation/matrix/genelist/genes.tsv")
+
+def getFilteredMtx(wildcards):
+    if wildcards.sample in scrublet_rerun:
+        return os.path.join(BioSamples_config.loc[wildcards.sample, "ScrubletPath"], wildcards.sample, "bg_removal/filtered_matrix/matrix.mtx.gz")
+
+
+def getBarcodes(wildcards):
+     if wildcards.sample in scrublet_rerun:
+        return os.path.join(BioSamples_config.loc[wildcards.sample, "ScrubletPath"],wildcards.sample, "bg_removal/transformation/matrix/barcodes.tsv.gz")
+
+rule GenerateAssignmentSheets:
+    params:
+        assignment_dict=getDict
+    output:
+        assignmentSheet=os.path.join(config["OutDir"], "AssignmentSheets", "{sample}_assignment.tsv")
+    resources:
+        mem_gb=4,
+        runtime_hr=1
+    run:
+        assignment=[]
+        assign=eval(params.assignment_dict)
+        for cluster in list(assign.keys()):
+            assignment.append([cluster, assign[cluster]])
+        df = pd.DataFrame(assignment, columns=['assignment', 'source'])
+        df.to_csv(output.assignmentSheet, sep="\t", index=False)
+
+rule rerunScrublet:
+    input: 
+        unzipped_tsv=getUnzippedtsv,
+        filtered_matrix_gz = getFilteredMtx,
+        barcodes_tsv_gz=getBarcodes
+    output:
+        doublet_table = os.path.join(config["OutDir"], "{sample}/Scrublet_doublets/manual_threshold/{sample}_scrublet_output_table.csv"),
+        doublet_UMAP = os.path.join(config["OutDir"], "{sample}/Scrublet_doublets/manual_threshold/{sample}_Doublet_UMAP.pdf"),
+        doublet_line_plot = os.path.join(config["OutDir"], "{sample}/Scrublet_doublets/manual_threshold/{sample}_line_plot.pdf")
+    params:
+        outdir=os.path.join(config["OutDir"],"{sample}/Scrublet_doublets/manual_threshold"),
+        scriptdir=config["ScriptDir"],
+        threshold=lambda wildcards: BioSamples_config.loc[wildcards.sample,"Doublet_threshold"],
+    resources:
+        mem_gb=16,
+        runtime_hr=1
+    conda:
+        config["env"]["scrublet"]
+    shell:
+        """
+        python {params.scriptdir}/Scrublet_rerun.py \
+            --mtx {input.filtered_matrix_gz} \
+            --gene_tsv {input.unzipped_tsv} \
+            --sample {wildcards.sample} \
+            --outdir {params.outdir} \
+            --barcodes {input.barcodes_tsv_gz} \
+            --threshold {params.threshold}
+        """
+
+rule mergePDF_scrublet:
+    input:
+        doublet_UMAPs = expand(os.path.join(config["OutDir"], "{sample}/Scrublet_doublets/manual_threshold/{sample}_Doublet_UMAP.pdf"),sample=scrublet_rerun),
+        doublet_line_plots = expand(os.path.join(config["OutDir"], "{sample}/Scrublet_doublets/manual_threshold/{sample}_line_plot.pdf"),sample=scrublet_rerun)
+    output:
+      merged_doublet_UMAP = os.path.join(config["OutDir"],"manual_threshold_merged_scrublet_Doublet_UMAP.pdf"),
+      merged_doublet_line_plot = os.path.join(config["OutDir"],"manual_threshold_merged_scrublet_line_plot.pdf")
+    resources:
+      mem_gb=4,
+      runtime_hr=1
+    run:
+      from pypdf import PdfMerger
+      merger = PdfMerger()
+      for pdf in input.doublet_UMAPs:
+        merger.append(pdf)
+      merger.write(output.merged_doublet_UMAP)
+      merger.close()
+      line_merger = PdfMerger()
+      for pdf in input.doublet_line_plots:
+        line_merger.append(pdf)
+      line_merger.write(output.merged_doublet_line_plot)
+      line_merger.close()
+
+def getScrubletTable(wildcards):
+    if wildcards.sample in scrublet_rerun:
+        return os.path.join(config["OutDir"], wildcards.sample, "Scrublet_doublets/manual_threshold", wildcards.sample+"_scrublet_output_table.csv")
+    else:
+        return os.path.join(config["OutDir"], wildcards.sample, "Scrublet_doublets", wildcards.sample+"_scrublet_output_table.csv")
+
+rule extractScrubletDoublets:
+    input:
+        doublet_scores=getScrubletTable
+    output:
+        scrubletCalls=os.path.join(config["OutDir"], "{sample}/doublet_calls", "ScrubletCalls.csv") 
+    resources:
+        mem_gb=16,
+        runtime_hr=1
+    run:
+        doublet_scores=pd.read_csv(input.doublet_scores,sep=",", header=0)
+        doublet_barcodes=doublet_scores[doublet_scores["predicted_doublet"]]["cell"]
+        doublet_barcodes.to_csv(output.scrubletCalls, index=False)
+
+def getATACCalls(wildcards):
+    if wildcards.sample in ATAC:
+        return BioSamples_config.loc[wildcards.sample,"ATAC_doublets"]
+    else:
+        return ""
+
+def getDemuxCalls(wildcards):
+    if wildcards.sample in SampleDemux:
+        return BioSamples_config.loc[wildcards.sample,"SampleDemux_doublets"]
+    else:
+        return ""
+
+def getDemuxAssignments(wildcards):
+    if wildcards.sample in SampleDemux:
+        return BioSamples_config.loc[wildcards.sample,"SampleDemux_table"]
+    else:
+        return ""
+
+#def getDemuxNumber(wildcards):
+#    if wildcards.sample in SampleDemux:
+#        number=BioSamples_config.loc[wildcards.sample,"SampleDemux"]
+#        return int(number)
+#    else:
+#        return ""
+
+def getArrowFile(wildcards):
+    if wildcards.sample in ATAC:
+        return BioSamples_config.loc[wildcards.sample,"Arrowfile"]
+    else:
+        return ""
+
+
+#combine doublets from multiple sources to generate a list of doublets and a dataframe showing for each doublet whether it's a doublet according to each doublet identification method.
+rule combineDoubletCalls:
+    input:
+        scrubletCalls=os.path.join(config["OutDir"], "{sample}/doublet_calls", "ScrubletCalls.csv"),
+    output:
+        doublet_barcodes=os.path.join(config["alt_OutDir"], "{sample}/doublet_calls", "All_doublets.csv"),
+        doublet_barcodes_df=os.path.join(config["alt_OutDir"], "{sample}/doublet_calls", "All_doublets_by_method.tsv")
+    params:
+        ATACCalls=getATACCalls,
+        DemuxCalls=getDemuxCalls
+    resources:
+        mem_gb=4,
+        runtime_hr=1
+    run:
+        doublet_df_list=[]
+        doublet_scores=pd.read_csv(input.scrubletCalls,sep=",", header=0)["cell"].tolist()
+        scrublet_df=pd.DataFrame({"cbc": doublet_scores, "scrublet_doublets": [True]*len(doublet_scores)})
+        doublet_df_list.append(scrublet_df)
+        print(len(doublet_scores))
+        print(doublet_df_list)
+        if params.ATACCalls != "":
+               ATAC_df=pd.read_csv(params.ATACCalls,sep="\t", header=0)
+               print(ATAC_df.head(n=10))
+               ATAC_multiplet_calls_df = ATAC_df[ATAC_df["AmuletMultiplets"]==True]
+               ATAC_calls=ATAC_multiplet_calls_df["GEX_Barcodes"].tolist()
+               doublet_scores.extend(ATAC_calls)
+               atac_multiplets_df = pd.DataFrame({"cbc":ATAC_calls, "Amulet_multiplets": [True]*len(ATAC_calls)})
+               doublet_df_list.append(atac_multiplets_df)
+               print(len(ATAC_calls))
+               ATAC_doublet_calls_df = ATAC_df[ATAC_df["ArchRDoublets"]==True]
+               print(ATAC_doublet_calls_df)
+               ATAC_calls=ATAC_doublet_calls_df["GEX_Barcodes"].tolist()
+               doublet_scores.extend(ATAC_calls)
+               if len(ATAC_calls) != 0:
+                    atac_doublets_df = pd.DataFrame({"cbc": ATAC_calls, "ArchR_doublets": [True]*len(ATAC_calls)})
+                    doublet_df_list.append(atac_doublets_df)
+               print(len(ATAC_calls))
+        if params.DemuxCalls != "":
+                demux_calls = pd.read_csv(params.DemuxCalls, sep="\t",header=None)[0]
+                print(demux_calls.head(n=10))
+                doublet_scores.extend(demux_calls)
+                demux_doublets_df = pd.DataFrame({"cbc": demux_calls, "demux_doublets": [True]*len(demux_calls)})
+                doublet_df_list.append(demux_doublets_df)
+                print(len(doublet_scores))
+
+        print(len(doublet_scores))
+        doublets=list(set(doublet_scores))
+        with open(output.doublet_barcodes, 'w+') as file:
+                wr = csv.writer(file, quoting=csv.QUOTE_MINIMAL)
+                wr.writerow(["Barcodes"])
+                for doublet in doublets:
+                    wr.writerow([doublet])
+        from functools import reduce
+        doublet_merge = reduce(lambda left, right: pd.merge(left , right, on = ["cbc"], how = "outer"), doublet_df_list)
+        doublet_merge.to_csv(output.doublet_barcodes_df, sep="\t", na_rep="False", index=False)
+
+
+rule getStats:
+    input: 
+        doublet_barcodes=expand(os.path.join(config["alt_OutDir"], "{sample}/doublet_calls", "All_doublets.csv"),sample=BioSamples)
+    output:
+        doublet_summary=os.path.join(config["alt_OutDir"], "Doublet_summary.csv"),
+    params:
+        samples=BioSamples,
+        outdir=config["alt_OutDir"]
+    resources:
+        mem_gb=8,
+        runtime_hr=1
+    shell:
+        """
+        echo Sample,NumberOfDoublets > {output.doublet_summary}
+        for sample in {params.samples}
+        do 
+            file={params.outdir}/${{sample}}/doublet_calls/All_doublets.csv
+            number=`sed 1d ${{file}} |wc -l`
+            echo ${{sample}},${{number}}>>{output.doublet_summary}
+        done
+        """
+
+def getSeuratObject(wildcards):
+        return os.path.join(BioSamples_config.loc[wildcards.sample, "ScrubletPath"], wildcards.sample, "bg_removal/QC/", wildcards.sample+ "_BgRemoved_SeuratObject_min_cell_10.filtered.pflogpf.RDS")
+
+        
+#Removal all identified doublets from the seurat object.
+rule subset:
+    input:
+        doublet_barcodes=os.path.join(config["alt_OutDir"], "{sample}/doublet_calls", "All_doublets.csv"),
+        SeuratObject=getSeuratObject,
+    output: 
+        cbc_pre_doublet_filter=os.path.join(config["alt_OutDir"], "{sample}/bg_removal/QC/{sample}_cbc_before_doublet_removal.tsv"),
+        doublet_removed=os.path.join(config["alt_OutDir"], "{sample}/bg_removal/QC/{sample}_SeuratObject_doublet_removed.RDS"),
+        doublet_removed_QC=os.path.join(config["alt_OutDir"], "{sample}/bg_removal/QC/{sample}_gex_data_QC_post_doublet_removal.tsv"),
+    params:
+        scriptdir=config["ScriptDir"],
+        outdir=os.path.join(config["alt_OutDir"], "{sample}/bg_removal/QC/")
+    resources:
+        mem_gb=16,
+        runtime_hr=1
+    conda:
+        config["env"]["scRNA"]
+    shell:
+        """
+        Rscript {params.scriptdir}/remove_doublet.R \
+            --inputSeuratObject {input.SeuratObject} \
+            --doublet_to_exclude {input.doublet_barcodes} \
+            --outdir {params.outdir} \
+            --sample {wildcards.sample}
+        """
+#Create a sheet of all the cell info. Only keep cells that have both GEX and ATAC.
+rule CreateEffectiveSheet:
+    input:
+        cbc_pre_doublet_filter=os.path.join(config["alt_OutDir"], "{sample}/bg_removal/QC/{sample}_cbc_before_doublet_removal.tsv"),
+        doublet_barcodes_df=os.path.join(config["alt_OutDir"], "{sample}/doublet_calls", "All_doublets_by_method.tsv")
+    output:
+        doublet_summary_sheet=os.path.join(config["alt_OutDir"], "{sample}/doublet_calls/{sample}_doublet_summary_sheet.tsv")
+    params:
+        ATACCalls=getATACCalls,
+        demuxAssignment=getDemuxAssignments,
+        considerDemuxSinglet=config["considerDemuxSinglet"]
+    resources:
+        mem_gb=8,
+        runtime_hr=1
+    run:
+        seurat_cbc = pd.read_csv(input.cbc_pre_doublet_filter,sep="\t", header=None, index_col=None, names=["cbc"])
+        doublet_df = pd.read_csv(input.doublet_barcodes_df,sep="\t", header=0, index_col=None)
+        print(doublet_df.head(n=10))
+        doublet_df["Multiplets"] = doublet_df.any(axis=1, bool_only=True)
+        #only keep cells/doublets that have GEX
+        summary_df = pd.merge(seurat_cbc, doublet_df, on = ["cbc"], how = "left")
+        print(summary_df.head(n=3))
+        if params.ATACCalls != "":
+            ATAC_cbc=pd.read_csv(params.ATACCalls,sep="\t", header=0,usecols=["GEX_Barcodes"])["GEX_Barcodes"].tolist()           
+            atac_df = pd.DataFrame({"cbc": ATAC_cbc,"InATAC": [True]*len(ATAC_cbc)})
+            # only keep cells that are in ATAC
+            summary_df = pd.merge(summary_df, atac_df, on=["cbc"], how="inner")
+        if params.demuxAssignment != "":
+            demux_df=pd.read_csv(params.demuxAssignment,sep="\t", header=0, usecols=["barcode", "status", "assignment"])
+            demux_df = demux_df[demux_df["status"]!="doublet"]
+            summary_df = pd.merge(summary_df, demux_df, left_on="cbc", right_on="barcode", how="left")
+            summary_df.rename(columns={'status': 'DemuxStatus'}, inplace=True)
+            if params.considerDemuxSinglet:
+                #unassigned cells are exclueded in this case; only use when the sequencing is deep enough
+                if params.ATACCalls != "":
+                    conditions = [(summary_df['InATAC']) & (~(summary_df["Multiplets"]==True)) & (summary_df["DemuxStatus"]=="singlet")]
+                else:
+                    conditions = [(~(summary_df["Multiplets"]==True)) & (summary_df["DemuxStatus"]=="singlet")]
+                values = [True]
+                summary_df["EffectiveCells"] = np.select(conditions,values, False)
+            else: 
+                if params.ATACCalls != "":
+                    conditions = [(summary_df['InATAC']) & (~(summary_df["Multiplets"]==True))]
+                else:
+                    conditions = [(~(summary_df["Multiplets"]==True))]
+                values = [True]
+                summary_df["EffectiveCells"] = np.select(conditions,values, False)
+        if params.demuxAssignment == "" and params.ATACCalls != "":
+            conditions = [ (summary_df['InATAC']) & (~(summary_df["Multiplets"]==True))]
+            values = [True]
+            summary_df["EffectiveCells"] = np.select(conditions, values, False)
+        if params.demuxAssignment == "" and params.ATACCalls == "":
+            conditions = [ ~(summary_df["Multiplets"]==True)]
+            values = [True]
+            summary_df["EffectiveCells"] = np.select(conditions, values, False)
+        summary_df.to_csv(output.doublet_summary_sheet, sep="\t", na_rep=False, index=False)
+
+
+rule UpdateEffectiveSheets:
+    input:
+        effectiveSheet=os.path.join(config["alt_OutDir"], "{sample}/doublet_calls/{sample}_doublet_summary_sheet.tsv"),
+        assignmentSheet=os.path.join(config["OutDir"], "AssignmentSheets", "{sample}_assignment.tsv")
+    params:
+        scriptdir=config["ScriptDir"],
+        outdir=os.path.join(config["alt_OutDir"], "{sample}/doublet_calls")
+    output:
+        doublet_summary_sheet=os.path.join(config["alt_OutDir"], "{sample}/doublet_calls/{sample}_doublet_summary_sheet_with_sample_origin.tsv")
+    resources:
+        mem_gb=8,
+        runtime_hr=1
+    conda:
+        config["env"]["scRNA"]
+    shell:
+        """
+        Rscript {params.scriptdir}/updateEffectiveSheets.R \
+            --effectiveSheet {input.effectiveSheet} \
+            --assignmentSheet {input.assignmentSheet} \
+            --outdir {params.outdir} \
+            --sample {wildcards.sample} 
+        """
+
+#Summary statistics of cell info
+rule EffectiveCellInfo:
+    input:
+        doublet_summary_sheets=expand(os.path.join(config["alt_OutDir"], "{sample}/doublet_calls/{sample}_doublet_summary_sheet.tsv"),sample=BioSamples),
+    output:
+        doublet_info=os.path.join(config["alt_OutDir"], "Doublet_composition_summary.csv"),
+    resources:
+        mem_gb=8,
+        runtime_hr=1
+    run:
+        counter=0
+        for sheet in input.doublet_summary_sheets:
+            sample=os.path.basename(sheet).replace("_doublet_summary_sheet.tsv", "")
+            print(sample)
+            doublet_sheet = pd.read_csv(sheet, sep="\t", header=0, index_col="cbc")
+            if counter == 0:
+                df = pd.DataFrame(columns=doublet_sheet.columns)
+            for col in doublet_sheet.columns:
+                if col == "assignment":
+                    assignment_list=[]
+                    sampleCounts=BioSamples_config.loc[sample,"SampleDemuxCount"]
+                    print(sampleCounts)
+                    for i in range(int(sampleCounts)):
+                        count=doublet_sheet[col].tolist().count(str(i))
+                        assignment_list.append(("cluster_"+str(i), count))
+                    print(assignment_list)
+		    df.at[sample, col]=repr(assignment_list)
+                else:
+                    df.loc[sample, col]=doublet_sheet[col].tolist().count(True)
+
+            df.loc[sample, "TotalCells"]=doublet_sheet.shape[0]
+            counter += 1
+        #df["Singlets"] = df["TotalCells"]-df["Multiplets"]
+        df.reset_index(inplace=True)
+        df= df.rename(columns = {'index':'Sample'})
+        df.to_csv(output.doublet_info, sep=",", index=False)
+
+def get_gex_saturation(wildcards):
+	    return(BioSamples_config.loc[wildcards.sample,"GEXSaturation"])
+
+
+rule subsetATAC_quality_to_multomic_effective_cells:
+    input:
+        atac_info=getATACCalls,
+        doublet_summary_sheet=os.path.join(config["alt_OutDir"], "{sample}/doublet_calls/{sample}_doublet_summary_sheet_with_sample_origin.tsv")
+    output:
+        atac_cell_quality_summary_sheet=os.path.join(config["alt_OutDir"], "{sample}/doublet_calls/", "{sample}_ATAC_cell_quality_sheet.tsv"),
+    params:
+        scriptdir=config["ScriptDir"],
+        outdir=os.path.join(config["alt_OutDir"], "{sample}/doublet_calls/"),
+    resources:
+        mem_gb=4,
+        runtime_hr=1    
+    conda:
+        config["env"]["scRNA"]
+    shell:
+        """
+        Rscript {params.scriptdir}/multiomic_ATAC_quality.R \
+            --summary_sheet {input.doublet_summary_sheet} \
+            --atacInfoSheet {input.atac_info} \
+            --outdir {params.outdir} \
+            --sample {wildcards.sample}
+        """
+
+rule subsetToMultiomicATAC:
+    input:
+        doublet_summary_sheets=os.path.join(config["alt_OutDir"], "{sample}/doublet_calls/{sample}_doublet_summary_sheet.tsv"),
+        SeuratObject=getSeuratObject,
+	    atac_info=getATACCalls
+    output: 
+        doublet_removed_UMAP=os.path.join(config["alt_OutDir"], "{sample}/bg_removal/QC/{sample}_SeuratObject_doublet_removed_multiomic_UMAP.RDS"),
+        doublet_removed_QC=os.path.join(config["alt_OutDir"], "{sample}/bg_removal/QC/{sample}_gex_data_QC_post_doublet_removal_multiomic.tsv"),
+        doublet_removed_QC_ATAC=os.path.join(config["alt_OutDir"], "{sample}/bg_removal/QC/{sample}_ATAC_QC_post_doublet_removal_multiomic.tsv"),
+        doublet_removed_figure_ATAC=os.path.join(config["alt_OutDir"], "{sample}/bg_removal/QC/{sample}_doublet_removed_multiomic_ATAC.pdf"),
+        doublet_removed_figure_UMAP=os.path.join(config["alt_OutDir"], "{sample}/bg_removal/QC/{sample}_doublet_removed_multiomic_UMAP.pdf"),
+        nfrag_nUMI=os.path.join(config["alt_OutDir"], "{sample}/bg_removal/QC/{sample}_nfrag_nUMI.pdf"),
+    params:
+        scriptdir=config["ScriptDir"],
+        outdir=os.path.join(config["alt_OutDir"], "{sample}/bg_removal/QC/"),
+        gex_saturation=get_gex_saturation,
+        minCell=config["minCell"]
+    resources:
+        mem_gb=32,
+        runtime_hr=1
+    conda:
+        config["env"]["scRNA"]
+    shell:
+        """
+        Rscript {params.scriptdir}/multiomic_seurat.R \
+            --inputSeuratObject {input.SeuratObject} \
+            --summary_sheet {input.doublet_summary_sheets} \
+            --outdir {params.outdir} \
+            --sample {wildcards.sample} \
+            --atacInfoSheet {input.atac_info} \
+            --GEXSaturation {params.gex_saturation} \
+            --min_cell {params.minCell}
+        """
+
+
+if ATAC.size > 0:
+    output_locations=[expand(os.path.join(config["alt_OutDir"], "{sample}/bg_removal/QC/{sample}_SeuratObject_doublet_removed_multiomic_UMAP.RDS"),sample=ATAC),expand(os.path.join(config["alt_OutDir"], "{sample}/bg_removal/QC/{sample}_SeuratObject_doublet_removed.RDS"),sample=BioSamples),expand(os.path.join(config["alt_OutDir"], "{sample}/doublet_calls/{sample}_doublet_summary_sheet_with_sample_origin.tsv"),sample=Demux),expand(os.path.join(config["alt_OutDir"], "{sample}/doublet_calls/", "{sample}_ATAC_cell_quality_sheet.tsv"),sample=ATAC)]
+else:
+    output_locations=[expand(os.path.join(config["alt_OutDir"], "{sample}/bg_removal/QC/{sample}_SeuratObject_doublet_removed.RDS"),sample=BioSamples),expand(os.path.join(config["alt_OutDir"], "{sample}/doublet_calls/{sample}_doublet_summary_sheet_with_sample_origin.tsv"),sample=Demux)]
+
+rule generate_location_summary:
+    input:
+        output_locations
+    output:
+        sample_location_summary=os.path.join(config["alt_OutDir"], "Sample_location_summary.tsv"),
+    resources:
+        mem_gb=2,
+        runtime_hr=1
+    run:
+        with open(output.sample_location_summary, 'w+') as f:
+            f.write("Sample\tmultiomicRDS\tGEXRDS\tEffectiveSheet\tATACQualitySheet\n")
+            for sample in BioSamples:
+                if sample in ATAC:
+                    multiomicRDS=os.path.join(config["alt_OutDir"], sample, "bg_removal", "QC", sample+"_SeuratObject_doublet_removed_multiomic_UMAP.RDS")
+                    ATACQuality=os.path.join(config["alt_OutDir"], sample, "doublet_calls", sample+"_ATAC_cell_quality_sheet.tsv")
+                else:
+                    multiomicRDS=""
+                    ATACQuality=""
+                GEXRDS=os.path.join(config["alt_OutDir"], sample, "bg_removal", "QC", sample+"_SeuratObject_doublet_removed.RDS")
+                effectiveSheet=os.path.join(config["alt_OutDir"], sample, "doublet_calls", sample+"_doublet_summary_sheet_with_sample_origin.tsv")
+                if not os.path.isfile(effectiveSheet):
+                    effectiveSheet=os.path.join(config["alt_OutDir"], sample, "doublet_calls", sample+"_doublet_summary_sheet.tsv")
+                print(ATACQuality)
+                f.write(sample+"\t"+multiomicRDS+"\t"+GEXRDS+"\t"+effectiveSheet+"\t"+ATACQuality+"\n")
+
+
+rule mapGEX2ATAC:
+    input:
+        doublet_summary_sheets=os.path.join(config["alt_OutDir"], "{sample}/doublet_calls/{sample}_doublet_summary_sheet.tsv"),
+    params:
+        scriptdir=config["ScriptDir"],
+        barcode_dict=config["mapGEX2ATAC"]["ATAC2GEX_dict"],
+        outdir=os.path.join(config["alt_OutDir"],"{sample}/multiome_barcodes"),
+        revcom=config["mapGEX2ATAC"]["revcom"],
+    resources:
+         mem_gb=8,
+         runtime_hr=2
+    conda:
+        config["env"]["python_ATAC"]
+    output:
+        atac_barcodes=os.path.join(config["alt_OutDir"],"{sample}/multiome_barcodes/ATAC_barcodes_for_archr.tsv")
+    shell:
+        """
+            python {params.scriptdir}/mapGEX2ATAC.py \
+                --barcode_dict {params.barcode_dict} \
+                --GEX_barcodes_df {input.doublet_summary_sheets} \
+                --outdir {params.outdir} \
+                --revcom {params.revcom} \
+                --sample {wildcards.sample}
+        """
+
+
+rule subsetATAC:
+    input:
+        atac_barcodes=os.path.join(config["alt_OutDir"],"{sample}/multiome_barcodes/ATAC_barcodes_for_archr.tsv"),
+        arrowfile=getArrowFile,
+    output:
+        umap=os.path.join(config["alt_OutDir"], "{sample}/ArchRProject_multiome/{sample}_UMAP.pdf"),
+    params:
+        scriptdir=config["ScriptDir"],
+        atac_info=getATACCalls,
+        genome=config["subsetATAC"]["Genome"],
+        workdir=os.path.join(config["subsetATAC"]["workdir"], "{sample}/ArchR"), 
+        outdir=os.path.join(config["alt_OutDir"], "{sample}/ArchRProject_multiome/"),
+    threads: 4
+    resources:
+        mem_gb=32,
+        runtime_hr=3
+    conda:
+        config["env"]["ATAC"]
+    shell:
+        """
+        mkdir -p {params.workdir}
+        Rscript {params.scriptdir}/ArchrProject.R \
+            --GenomeAssembly {params.genome} \
+            --barcode_sheet {input.atac_barcodes} \
+            --WorkDir {params.workdir} \
+            --ArrowFile {input.arrowfile} \
+            --Threads "$(({threads} * 2))" \
+            --OutDir {params.outdir} \
+            --SampleName {wildcards.sample} 
+        """
+
+rule mergePDF:
+    input:
+        doublet_removed_figure_ATAC=expand(os.path.join(config["alt_OutDir"], "{sample}/bg_removal/QC/{sample}_doublet_removed_multiomic_ATAC.pdf"),sample=ATAC),
+        doublet_removed_figure_UMAP=expand(os.path.join(config["alt_OutDir"], "{sample}/bg_removal/QC/{sample}_doublet_removed_multiomic_UMAP.pdf"),sample=ATAC),
+        nfrag_nUMI=expand(os.path.join(config["alt_OutDir"], "{sample}/bg_removal/QC/{sample}_nfrag_nUMI.pdf"),sample=ATAC),
+        umap=expand(os.path.join(config["alt_OutDir"], "{sample}/ArchRProject_multiome/{sample}_UMAP.pdf"),sample=ATAC),
+    output:
+        merged_doublet_removed_figure_ATAC=os.path.join(config["OutDir"],"merged_doublet_removed_multiomic_ATAC_quality.pdf"),
+        merged_doublet_removed_figure_UMAP=os.path.join(config["OutDir"],"merged_doublet_removed_multiomic_UMAP.pdf"),
+        merged_nfrag_nUMI=os.path.join(config["OutDir"],"merged_nfrag_nUMI.pdf"),
+        merged_umap=os.path.join(config["OutDir"],"merged_ArchR_UMAP.pdf")
+    resources:
+      mem_gb=4,
+      runtime_hr=1
+    run:
+      from pypdf import PdfMerger
+      merger_1 = PdfMerger()
+      for pdf in input.doublet_removed_figure_ATAC:
+        merger_1.append(pdf)
+      merger_1.write(output.merged_doublet_removed_figure_ATAC)
+      merger_1.close()
+      merger_2 = PdfMerger()
+      for pdf in input.doublet_removed_figure_UMAP:
+        merger_2.append(pdf)
+      merger_2.write(output.merged_doublet_removed_figure_UMAP)
+      merger_2.close()
+      merger_3= PdfMerger()
+      for pdf in input.nfrag_nUMI:
+        merger_3.append(pdf)
+      merger_3.write(output.merged_nfrag_nUMI)
+      merger_3.close()
+      merger_4 = PdfMerger()
+      for pdf in input.umap:
+        merger_4.append(pdf)
+      merger_4.write(output.merged_umap)
+      merger_4.close()
+
+
+rule combine_atac_qc:
+    input:
+        doublet_removed_QC_ATAC=expand(os.path.join(config["alt_OutDir"], "{sample}/bg_removal/QC/{sample}_ATAC_QC_post_doublet_removal_multiomic.tsv"),sample=ATAC),
+    output:
+        combined_atac_qc = os.path.join(config["alt_OutDir"],"Combined_ATAC_QC_post_doublet_removal.tsv")
+    resources:
+        mem_gb=4,
+        runtime_hr=1
+    shell:
+        """
+        set +o pipefail;
+        i=0
+        for sample in {input.doublet_removed_QC_ATAC}
+        do 
+            if [ $i -eq 0 ]
+            then
+                cat $sample > {output.combined_atac_qc}
+            else
+                cat $sample |sed 1d >> {output.combined_atac_qc}
+            fi
+            ((i=i+1))
+            echo $i
+        done
+        """
+
+rule combine_GEX_qc:
+    input:
+        doublet_removed_QC_GEX=expand(os.path.join(config["alt_OutDir"], "{sample}/bg_removal/QC/{sample}_gex_data_QC_post_doublet_removal_multiomic.tsv"),sample=ATAC),
+    output:
+        combined_GEX_qc= os.path.join(config["alt_OutDir"],"Combined_GEX_QC_post_doublet_removal.tsv") 
+    resources:  
+        mem_gb=4,
+        runtime_hr=1
+    shell:
+        """
+        set +o pipefail;
+        i=0
+        for sample in {input.doublet_removed_QC_GEX}
+        do 
+            if [ $i -eq 0 ]
+            then
+                cat $sample > {output.combined_GEX_qc}
+            else
+                cat $sample |sed 1d >> {output.combined_GEX_qc}
+            fi
+            ((i=i+1))
+            echo $i
+        done
+        """ 
+

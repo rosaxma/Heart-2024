@@ -1,0 +1,15 @@
+SampleSheet: "config/BioSample_evaluation_location.tsv"
+ScriptDir: "workflow/scripts"
+OutDir: "output"
+GeneList: "resources/sex_specific_genes.txt"
+SampleInfoTable: "resources/FetalHeartSamples.tsv"
+minCell: 10
+clustering:
+        increment: 0.2
+create_control:
+        sampleIDColName: "sample_id"
+model_dictionary: '{"coarse_2305_heart_atlas" :"resources/coarse_model.pkl"}'
+env:
+        r_env: "workflow/envs/R_4.2.0_scRNA.yml"
+        celltypist: "workflow/envs/celltypist.yml"
+gene_marker: "resources/marker_gene_list.tsv"

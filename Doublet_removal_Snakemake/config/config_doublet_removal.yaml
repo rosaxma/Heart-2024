@@ -1,0 +1,18 @@
+SampleSheet: "config/doublet_removal_matrix.tsv"
+OutDir: "alignment/pool_3"
+alt_OutDir: "alignment/pool_3"
+ScriptDir: "workflow/scripts"
+considerDemuxSinglet: True
+minCell: 10
+mapGEX2ATAC:
+        revcom: True
+        ATAC2GEX_dict: "resources/ATAC_reverse_complement_GEX_dict.pickle"
+
+subsetATAC:
+        Genome: "hg38"
+        workdir: "alignment/pool_3/ATAC"
+env:
+        scRNA: "workflow/envs/R_4.2.0_scRNA.yml"
+        scrublet: "workflow/envs/scrublet.yml"
+        ATAC: "workflow/envs/R_scATAC.yaml"
+        python_ATAC: "workflow/envs/python_scATAC.yaml"

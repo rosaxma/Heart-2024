@@ -1,0 +1,11 @@
+filterTable: "config/QC_filter_metrics.tsv"
+OG_OutDir: "alignment/pool_3"
+OutDir: "alignment/pool_3"
+ScriptDir: "workflow/scripts" 
+minCell: 10
+env:
+        scRNA: "workflow/envs/R_4.2.0_scRNA.yml" 
+        scrublet: "workflow/envs/scrublet.yml" 
+GEXsheet: "config/sheet_for_doublet_removal.tsv"
+ATACsheet: "config/ATAC_output_summary_sheet.tsv"
+SampleAssignment: "config/sample_assignment_sheet.tsv"

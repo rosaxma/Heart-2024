@@ -1,0 +1,2 @@
+Sample	multiomicRDS	GEXRDS	EffectiveSheet	ATACQualitySheet
+FT014020_1	FT014020_1_SeuratObject_doublet_removed_multiomic_UMAP.RDS	FT014020_1_SeuratObject_doublet_removed.RDS	config/example/FT014020_1_doublet_summary_sheet_with_sample_origin.tsv	config/example/FT014020_1_ATAC_cell_quality_sheet.tsv

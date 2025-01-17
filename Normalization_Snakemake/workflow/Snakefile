@@ -1,0 +1,357 @@
+import os
+import pandas as pd
+import subprocess
+import numpy as np
+
+BioSampleConfigFile=config["filterTable"]
+BioSamples_config = pd.read_table(BioSampleConfigFile, na_values="").fillna("None").set_index("Sample", drop=False)
+BioSamples=list(BioSamples_config.index.values)
+print(BioSamples)
+minCell=config["minCell"]
+#######################################################
+if os.path.isfile(config["ATACsheet"]):
+    ruleorder: filterCells_ATAC > filterCells
+    ruleorder: summarize_summary_sheets_ATAC > summarize_summary_sheets
+    atac_sheet_path=config["ATACsheet"]
+    atac_sheet=pd.read_table(atac_sheet_path, na_values="").fillna("None").set_index("Sample", drop=False)
+else:
+    ruleorder: filterCells > filterCells_ATAC
+    ruleorder: summarize_summary_sheets > summarize_summary_sheets_ATAC
+#######################################################
+
+rule all:
+    input:
+        filtered_RDS = expand(os.path.join(config["OutDir"],"{sample}/bg_removal/QC", f"{{sample}}_BgRemoved_SeuratObject_min_cell_{minCell}.filtered.RDS"), sample=BioSamples),
+        QC_plots = expand(os.path.join(config["OutDir"],"{sample}/bg_removal/QC_postFilter", f"filtered_{{sample}}_QC_min_cell_{minCell}.pdf"),sample=BioSamples),
+        metrics= expand(os.path.join(config["OutDir"],"{sample}/bg_removal/transformation","{sample}_metrics.json"),sample=BioSamples),
+        updated_filtered_RDS = expand(os.path.join(config["OutDir"],"{sample}/bg_removal/QC", f"{{sample}}_BgRemoved_SeuratObject_min_cell_{minCell}.filtered.pflogpf.RDS"),sample=BioSamples),
+        unzipped_tsv=expand(os.path.join(config["OutDir"],"{sample}/bg_removal/transformation/matrix/genelist/genes.tsv"),sample=BioSamples),
+        doublet_table=expand(os.path.join(config["OutDir"], "{sample}/Scrublet_doublets/{sample}_scrublet_output_table.csv"),sample=BioSamples),
+        merged_doublet_UMAP = os.path.join(config["OutDir"],"merged_scrublet_Doublet_UMAP.pdf"),
+        merged_doublet_line_plot = os.path.join(config["OutDir"],"merged_scrublet_line_plot.pdf"),
+        merged_QC_plot = os.path.join(config["OutDir"],"POSTFILTER_merged_GEX_QC_plot_QC.pdf"),
+        merged_QC_mito_plot = os.path.join(config["OutDir"],"POSTFILTER_merged_GEX_UMI_mito_QC_plot_QC.pdf"),
+        doublet_removal_sheet = os.path.join(config["OutDir"],"doublet_removal_matrix.tsv"),
+        SummarySheet = os.path.join(config["OutDir"],"sample_cell_count_before_vs_after_filtering.tsv")
+   
+rule filterCells:
+    input:
+        RDS = os.path.join(config["OG_OutDir"],"{sample}/bg_removal/QC", f"{{sample}}_BgRemoved_SeuratObject_min_cell_{minCell}.RDS")
+    output:
+        filtered_RDS = os.path.join(config["OutDir"],"{sample}/bg_removal/QC", f"{{sample}}_BgRemoved_SeuratObject_min_cell_{minCell}.filtered.RDS"),
+        filtered_matrix_gz = os.path.join(config["OutDir"],"{sample}/bg_removal/filtered_matrix/matrix.mtx.gz"),
+        filtered_gene_gz = os.path.join(config["OutDir"],"{sample}/bg_removal/filtered_matrix/features.tsv.gz"),
+        filtered_barcode_gz = os.path.join(config["OutDir"],"{sample}/bg_removal/filtered_matrix/barcodes.tsv.gz"),
+        cellcount = os.path.join(config["OutDir"],"{sample}/bg_removal/filtered_matrix/cell_count_before_vs_after_filtering.tsv")
+    params:
+        min_nUMI=lambda wildcards: BioSamples_config.loc[wildcards.sample,"nUMI_min"],
+        max_nUMI=lambda wildcards: BioSamples_config.loc[wildcards.sample,"nUMI_max"],
+        min_nGene=lambda wildcards: BioSamples_config.loc[wildcards.sample,"nGene_min"],
+        max_nGene=lambda wildcards: BioSamples_config.loc[wildcards.sample,"nGene_max"],
+        ratio_mt=lambda wildcards: BioSamples_config.loc[wildcards.sample,"ratio_mt"],
+        #ratio_ribo=lambda wildcards: BioSamples_config.loc[wildcards.sample,"ratio_ribo"],
+        scriptdir=config["ScriptDir"], 
+        outdir=os.path.join(config["OutDir"],"{sample}/bg_removal/filtered_matrix")
+    resources:
+        mem_gb=16,
+        runtime_hr=3
+    conda:
+        config["env"]["scRNA"]
+    shell:
+        """
+        Rscript {params.scriptdir}/filter.R \
+        --inputSeuratObject {input.RDS} \
+        --min_nUMI {params.min_nUMI} \
+        --max_nUMI {params.max_nUMI} \
+        --min_nGene {params.min_nGene} \
+        --max_nGene {params.max_nGene} \
+        --ratio_mt {params.ratio_mt} \
+        --sample {wildcards.sample} \
+        --outdir {params.outdir};
+        gzip {params.outdir}/matrix.mtx;
+        gzip {params.outdir}/features.tsv;
+        gzip {params.outdir}/barcodes.tsv
+        """
+
+rule filterCells_ATAC:
+    input:
+        RDS = os.path.join(config["OG_OutDir"],"{sample}/bg_removal/QC", f"{{sample}}_BgRemoved_SeuratObject_min_cell_{minCell}.RDS"),
+        ATAC_barcode=lambda wildcards:atac_sheet.loc[wildcards.sample,"ATAC_doublets"],
+    output:
+        filtered_RDS = os.path.join(config["OutDir"],"{sample}/bg_removal/QC", f"{{sample}}_BgRemoved_SeuratObject_min_cell_{minCell}.filtered.RDS"),
+        filtered_matrix_gz = os.path.join(config["OutDir"],"{sample}/bg_removal/filtered_matrix/matrix.mtx.gz"),
+        filtered_gene_gz = os.path.join(config["OutDir"],"{sample}/bg_removal/filtered_matrix/features.tsv.gz"),
+        filtered_barcode_gz = os.path.join(config["OutDir"],"{sample}/bg_removal/filtered_matrix/barcodes.tsv.gz"),
+        cellcount = os.path.join(config["OutDir"],"{sample}/bg_removal/filtered_matrix/cell_count_before_vs_after_filtering.tsv")
+    params:
+        min_nUMI=lambda wildcards: BioSamples_config.loc[wildcards.sample,"nUMI_min"],
+        max_nUMI=lambda wildcards: BioSamples_config.loc[wildcards.sample,"nUMI_max"],
+        min_nGene=lambda wildcards: BioSamples_config.loc[wildcards.sample,"nGene_min"],
+        max_nGene=lambda wildcards: BioSamples_config.loc[wildcards.sample,"nGene_max"],
+        ratio_mt=lambda wildcards: BioSamples_config.loc[wildcards.sample,"ratio_mt"],
+        #ratio_ribo=lambda wildcards: BioSamples_config.loc[wildcards.sample,"ratio_ribo"],
+        scriptdir=config["ScriptDir"], 
+        outdir=os.path.join(config["OutDir"],"{sample}/bg_removal/filtered_matrix")
+    resources:
+        mem_gb=16,
+        runtime_hr=3
+    conda:
+        config["env"]["scRNA"]
+    shell:
+        """
+        Rscript {params.scriptdir}/filter.R \
+        --inputSeuratObject {input.RDS} \
+        --min_nUMI {params.min_nUMI} \
+        --max_nUMI {params.max_nUMI} \
+        --min_nGene {params.min_nGene} \
+        --max_nGene {params.max_nGene} \
+        --ratio_mt {params.ratio_mt} \
+        --sample {wildcards.sample} \
+        --outdir {params.outdir} \
+        --atacBarcodes {input.ATAC_barcode};
+        gzip {params.outdir}/matrix.mtx;
+        gzip {params.outdir}/features.tsv;
+        gzip {params.outdir}/barcodes.tsv
+        """
+
+rule summarize_summary_sheets:
+    input: 
+        cellcounts = expand(os.path.join(config["OutDir"],"{sample}/bg_removal/filtered_matrix/cell_count_before_vs_after_filtering.tsv"),sample=BioSamples),
+    output:
+        SummarySheet = os.path.join(config["OutDir"],"sample_cell_count_before_vs_after_filtering.tsv")
+    params:
+        cellcounts = ",".join(expand(os.path.join(config["OutDir"],"{sample}/bg_removal/filtered_matrix/cell_count_before_vs_after_filtering.tsv"),sample=BioSamples)),
+        samples=",".join(expand("{sample}", sample=BioSamples)),
+        scriptdir=config["ScriptDir"],
+    resources:
+        mem_gb=2,
+        runtime_hr=1
+    conda:
+        config["env"]["scRNA"]
+    shell:
+        """
+        Rscript {params.scriptdir}/summary.R \
+            --summarySheets {params.cellcounts} \
+            --samples {params.samples} \
+            --outputFile {output.SummarySheet} \
+            --ATAC FALSE
+        """
+rule summarize_summary_sheets_ATAC:
+    input: 
+        cellcounts = expand(os.path.join(config["OutDir"],"{sample}/bg_removal/filtered_matrix/cell_count_before_vs_after_filtering.tsv"),sample=BioSamples),
+    output:
+        SummarySheet = os.path.join(config["OutDir"],"sample_cell_count_before_vs_after_filtering.tsv")
+    params:
+        cellcounts = ",".join(expand(os.path.join(config["OutDir"],"{sample}/bg_removal/filtered_matrix/cell_count_before_vs_after_filtering.tsv"),sample=BioSamples)),
+        samples=",".join(expand("{sample}", sample=BioSamples)),
+        scriptdir=config["ScriptDir"],
+    resources:
+        mem_gb=2,
+        runtime_hr=1
+    conda:
+        config["env"]["scRNA"]
+    shell:
+        """
+        Rscript {params.scriptdir}/summary.R \
+            --summarySheets {params.cellcounts} \
+            --samples {params.samples} \
+            --outputFile {output.SummarySheet} \
+            --ATAC TRUE
+        """
+
+rule filteredQC:
+    input:
+        filtered_RDS = os.path.join(config["OutDir"],"{sample}/bg_removal/QC", f"{{sample}}_BgRemoved_SeuratObject_min_cell_{minCell}.filtered.RDS"),
+    output:
+        QC_plots = os.path.join(config["OutDir"],"{sample}/bg_removal/QC_postFilter", f"filtered_{{sample}}_QC_min_cell_{minCell}.pdf"),
+        QC_mito_plots = os.path.join(config["OutDir"],"{sample}/bg_removal/QC_postFilter", f"filtered_{{sample}}_QC_UMI_vs_mito_{minCell}.pdf"),
+    params: 
+        output_dir= os.path.join(config["OutDir"],"{sample}/bg_removal/QC_postFilter"),
+        scriptdir=config["ScriptDir"],
+        minCell=minCell
+    resources:
+        mem_gb=16,
+        runtime_hr=3
+    conda:
+        config["env"]["scRNA"]
+    shell:
+        """
+        Rscript {params.scriptdir}/QC_filter.R \
+        --bg_removed_RDS {input.filtered_RDS} \
+        --OutDir {params.output_dir} \
+        --min.cells {params.minCell} \
+        --sample {wildcards.sample}
+        """
+
+rule mergePDF:
+    input:
+      QC_plots = expand(os.path.join(config["OutDir"],"{sample}/bg_removal/QC_postFilter", f"filtered_{{sample}}_QC_min_cell_{minCell}.pdf"),sample=BioSamples),
+      QC_mito_plots = expand(os.path.join(config["OutDir"],"{sample}/bg_removal/QC_postFilter", f"filtered_{{sample}}_QC_UMI_vs_mito_{minCell}.pdf"),sample=BioSamples)
+    output:
+      merged_QC_plot = os.path.join(config["OutDir"],"POSTFILTER_merged_GEX_QC_plot_QC.pdf"),
+      merged_QC_mito_plot = os.path.join(config["OutDir"],"POSTFILTER_merged_GEX_UMI_mito_QC_plot_QC.pdf")
+    resources:
+      mem_gb=4,
+      runtime_hr=1
+    run:
+      from pypdf import PdfMerger
+      merger = PdfMerger()
+      for pdf in input.QC_plots:
+        merger.append(pdf)
+      merger.write(output.merged_QC_plot)
+      merger.close()
+      mito_merger = PdfMerger()
+      for pdf in input.QC_mito_plots:
+        mito_merger.append(pdf)
+      mito_merger.write(output.merged_QC_mito_plot)
+      mito_merger.close()
+
+rule transformation:
+    input:
+        filtered_matrix_gz = os.path.join(config["OutDir"],"{sample}/bg_removal/filtered_matrix/matrix.mtx.gz"),
+        filtered_gene_gz = os.path.join(config["OutDir"],"{sample}/bg_removal/filtered_matrix/features.tsv.gz"),
+        filtered_barcode_gz = os.path.join(config["OutDir"],"{sample}/bg_removal/filtered_matrix/barcodes.tsv.gz")
+    output:
+        metrics=os.path.join(config["OutDir"],"{sample}/bg_removal/transformation/{sample}_metrics.json"),
+        transformed_mtx=os.path.join(config["OutDir"],"{sample}/bg_removal/transformation/matrix/matrix.mtx.gz"),
+        barcodes_tsv_gz=os.path.join(config["OutDir"],"{sample}/bg_removal/transformation/matrix/barcodes.tsv.gz"),
+        unzipped_tsv=os.path.join(config["OutDir"],"{sample}/bg_removal/transformation/matrix/genelist/genes.tsv")
+    params:
+        outdir=os.path.join(config["OutDir"],"{sample}/bg_removal/transformation"),
+        scriptdir=config["ScriptDir"]
+    resources:
+        mem_gb=16,
+        runtime_hr=3
+    shell:
+        """
+        python {params.scriptdir}/metrics_matrix.py {input.filtered_matrix_gz} {output.metrics};
+        python {params.scriptdir}/norm_sparse.py {input.filtered_matrix_gz} {params.outdir};
+        gzip -f {params.outdir}/*mtx;
+        python {params.scriptdir}/metrics_methods_sparse.py {input.filtered_matrix_gz} {params.outdir}/pf_log_pf.mtx.gz {output.metrics};
+        ln -s {params.outdir}/*.mtx.gz {params.outdir}/matrix/matrix.mtx.gz;
+        cp {input.filtered_gene_gz} {params.outdir}/matrix/;
+        cp {input.filtered_barcode_gz} {params.outdir}/matrix/;
+        cd {params.outdir}/matrix/;
+        gunzip -cf features.tsv.gz > {params.outdir}/matrix/genelist/genes.tsv
+        """
+
+rule updateSeuratObject:
+    input:
+        filtered_RDS = os.path.join(config["OutDir"],"{sample}/bg_removal/QC", f"{{sample}}_BgRemoved_SeuratObject_min_cell_{minCell}.filtered.RDS"),
+        transformed_mtx = os.path.join(config["OutDir"],"{sample}/bg_removal/transformation/matrix/matrix.mtx.gz")
+    output:
+        updated_filtered_RDS = os.path.join(config["OutDir"],"{sample}/bg_removal/QC", f"{{sample}}_BgRemoved_SeuratObject_min_cell_{minCell}.filtered.pflogpf.RDS"),
+    params:
+        scriptdir=config["ScriptDir"],
+        transformed_mtx = os.path.join(config["OutDir"],"{sample}/bg_removal/transformation/matrix"),
+    resources:
+        mem_gb=16,
+        runtime_hr=1
+    conda:
+        config["env"]["scRNA"]
+    shell:
+        """
+        Rscript {params.scriptdir}/updateSeurat.R \
+        --inputSeuratObject {input.filtered_RDS} \
+        --transformed_mtx {params.transformed_mtx}
+        """
+
+rule runScrublet:
+    input: 
+        unzipped_tsv=os.path.join(config["OutDir"],"{sample}/bg_removal/transformation/matrix/genelist/genes.tsv"),
+        filtered_matrix_gz = os.path.join(config["OutDir"],"{sample}/bg_removal/filtered_matrix/matrix.mtx.gz"),
+        barcodes_tsv_gz=os.path.join(config["OutDir"],"{sample}/bg_removal/transformation/matrix/barcodes.tsv.gz")
+    output:
+        doublet_table = os.path.join(config["OutDir"], "{sample}/Scrublet_doublets/{sample}_scrublet_output_table.csv"),
+        doublet_UMAP = os.path.join(config["OutDir"], "{sample}/Scrublet_doublets/{sample}_Doublet_UMAP.pdf"),
+        doublet_line_plot = os.path.join(config["OutDir"], "{sample}/Scrublet_doublets/{sample}_line_plot.pdf")
+    params:
+        outdir=os.path.join(config["OutDir"],"{sample}/Scrublet_doublets"),
+        scriptdir=config["ScriptDir"]
+    resources:
+        mem_gb=16,
+        runtime_hr=1
+    conda:
+        config["env"]["scrublet"]
+    shell:
+        """
+        #https://github.com/swolock/scrublet
+        python {params.scriptdir}/Scrublet.py \
+            --mtx {input.filtered_matrix_gz} \
+            --gene_tsv {input.unzipped_tsv} \
+            --sample {wildcards.sample} \
+            --outdir {params.outdir} \
+            --barcodes {input.barcodes_tsv_gz}
+        """
+
+rule mergePDF_scrublet:
+    input:
+        doublet_UMAPs = expand(os.path.join(config["OutDir"], "{sample}/Scrublet_doublets/{sample}_Doublet_UMAP.pdf"),sample=BioSamples),
+        doublet_line_plots = expand(os.path.join(config["OutDir"], "{sample}/Scrublet_doublets/{sample}_line_plot.pdf"),sample=BioSamples)
+    output:
+      merged_doublet_UMAP = os.path.join(config["OutDir"],"merged_scrublet_Doublet_UMAP.pdf"),
+      merged_doublet_line_plot = os.path.join(config["OutDir"],"merged_scrublet_line_plot.pdf")
+    resources:
+      mem_gb=4,
+      runtime_hr=1
+    run:
+      from pypdf import PdfMerger
+      merger = PdfMerger()
+      for pdf in input.doublet_UMAPs:
+        merger.append(pdf)
+      merger.write(output.merged_doublet_UMAP)
+      merger.close()
+      line_merger = PdfMerger()
+      for pdf in input.doublet_line_plots:
+        line_merger.append(pdf)
+      line_merger.write(output.merged_doublet_line_plot)
+      line_merger.close()
+
+rule prepare_doublet_removal_sheet:
+    input:
+        GEX_sheet=config["GEXsheet"],
+        doublet_table = expand(os.path.join(config["OutDir"], "{sample}/Scrublet_doublets/{sample}_scrublet_output_table.csv"),sample=BioSamples)
+    params:
+        ATAC_sheet=config["ATACsheet"],
+        SampleAssignment=config["SampleAssignment"],
+    output:
+        doublet_removal_sheet = os.path.join(config["OutDir"],"doublet_removal_matrix.tsv"),
+    resources:
+        mem_gb=2,
+        runtime_hr=1
+    run:
+        GEX_summary=pd.read_table(input.GEX_sheet, index_col=0, sep="\t").fillna("")
+        if os.path.isfile(params.ATAC_sheet):
+            ATAC_summary=pd.read_table(params.ATAC_sheet, index_col=0, sep="\t").fillna("")
+        if os.path.isfile(params.SampleAssignment):
+            assignment_summary=pd.read_table(params.SampleAssignment, index_col=0, sep="\t").fillna("")
+            print(assignment_summary.head)
+        with open(output.doublet_removal_sheet, 'w+') as f:
+            f.write("Sample\tGEXSaturation\tDoublet_threshold\tScrubletPath\tSampleDemux_doublets\tSampleDemux_table\tSampleDemuxCount\tATAC\tATAC_doublets\tArrowfile\tAssignment\n")
+            for sample in BioSamples:
+                Saturation=GEX_summary.loc[sample,"GEXSaturation"]
+                ScrubletPath=os.path.join(config["OutDir"])
+                SampleDemux_doublets=GEX_summary.loc[sample,"SampleDemux_doublets"]
+                SampleDemux_table=GEX_summary.loc[sample,"SampleDemux_table"]
+                SampleCount=GEX_summary.loc[sample,"SampleDemuxCount"]
+                if os.path.isfile(params.ATAC_sheet):
+                    if sample in ATAC_summary.index:
+                        ATAC="T"
+                        ATAC_doublets=ATAC_summary.loc[sample, "ATAC_doublets"]
+                        Arrowfile=ATAC_summary.loc[sample, "Arrowfile"]
+                    else:
+                        ATAC="F"
+                        ATAC_doublets=""
+                        Arrowfile=""
+                else:
+                    ATAC="F"
+                    ATAC_doublets=""
+                    Arrowfile=""
+                if os.path.isfile(params.SampleAssignment):
+                    if sample in assignment_summary.index:
+                        assignment=assignment_summary.loc[sample,"Assignment"]
+                    else:
+                        assignment=""
+                else:
+                    assignment=""
+                f.write(sample+"\t"+str(Saturation)+"\t"+"Default"+"\t"+ScrubletPath+"\t"+SampleDemux_doublets+"\t"+SampleDemux_table+"\t"+str(SampleCount)+"\t"+ATAC+"\t"+ATAC_doublets+"\t"+Arrowfile+"\t"+assignment+"\n")

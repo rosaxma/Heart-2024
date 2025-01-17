@@ -1,0 +1,10 @@
+Sample	ATAC_doublets	Arrowfile
+FT016_v3_1	[]/FT016_v3_1/multiomic/ATACBarcode2GEXmapping.tsv	[]/FT016_v3_1/multiomic/ArchR/FT016_v3_1.arrow
+FT016_v3_2	[]/FT016_v3_2/multiomic/ATACBarcode2GEXmapping.tsv	[]/FT016_v3_2/multiomic/ArchR/FT016_v3_2.arrow
+FT020_v3_1	[]/FT020_v3_1/multiomic/ATACBarcode2GEXmapping.tsv	[]/FT020_v3_1/multiomic/ArchR/FT020_v3_1.arrow
+FT020_v3_2	[]/FT020_v3_2/multiomic/ATACBarcode2GEXmapping.tsv	[]/FT020_v3_2/multiomic/ArchR/FT020_v3_2.arrow
+FT021_SVD_30K	[]/FT021_SVD_30K/multiomic/ATACBarcode2GEXmapping.tsv	[]/FT021_SVD_30K/multiomic/ArchR/FT021_SVD_30K.arrow
+FT021_SVD_50K	[]/FT021_SVD_50K/multiomic/ATACBarcode2GEXmapping.tsv	[]/FT021_SVD_50K/multiomic/ArchR/FT021_SVD_50K.arrow
+FT021_SVD_75K	[]/FT021_SVD_75K/multiomic/ATACBarcode2GEXmapping.tsv	[]/FT021_SVD_75K/multiomic/ArchR/FT021_SVD_75K.arrow
+FT027_v3_3	[]/FT027_v3_3/multiomic/ATACBarcode2GEXmapping.tsv	[]/FT027_v3_3/multiomic/ArchR/FT027_v3_3.arrow
+FT027_v3_4	[]/FT027_v3_4/multiomic/ATACBarcode2GEXmapping.tsv	[]/FT027_v3_4/multiomic/ArchR/FT027_v3_4.arrow
