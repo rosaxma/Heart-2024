@@ -1,5 +1,5 @@
 # Analysis code for *Molecular convergence of risk variants for congenital heart defects leveraging a regulatory map of the human fetal heart*
-The snakemake pipelines were designed to run on [Sherlock](https://www.sherlock.stanford.edu), an HPC platform at Stanford University. The config files are located in \[dir\]/config
+The snakemake pipelines were designed to run on [Sherlock](https://www.sherlock.stanford.edu), an HPC platform at Stanford University. The config files are located in \[dir\]/config. The Methods section of the corresponding [manuscript](https://www.medrxiv.org/content/10.1101/2024.11.20.24317557v2.full) provides detailed explanations of each step. 
 ## envrionments
   ### environment for snakemake runs:
   envs/snakemake.yml 
