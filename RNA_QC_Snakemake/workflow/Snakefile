@@ -1,0 +1,129 @@
+import os
+import pandas as pd
+import subprocess
+import numpy as np
+
+BioSampleConfigFile=config["SampleSheet"]
+BioSamples_config = pd.read_table(BioSampleConfigFile, na_values="").fillna("None").set_index("Sample", drop=False)
+BioSamples=list(BioSamples_config.index.values)
+print(BioSamples)
+minCell=config["minCell"]
+
+
+rule all:
+  input:
+    QC_plots = expand(os.path.join(config["OutDir"],"{sample}/bg_removal/QC", f"{{sample}}_QC_min_cell_{minCell}.pdf"), sample=BioSamples),
+    RDS = expand(os.path.join(config["OutDir"],"{sample}/bg_removal/QC", f"{{sample}}_BgRemoved_SeuratObject_min_cell_{minCell}.RDS"), sample=BioSamples),
+    RDS_w_bg = expand(os.path.join(config["OutDir"],"{sample}/Seurat_wo_bg_removal/", "{sample}_SeuratObject.RDS"), sample=BioSamples),
+    merged_QC_plot = os.path.join(config["OutDir"],"merged_GEX_QC_plot.pdf"),
+    merged_QC_mito_plot = os.path.join(config["OutDir"],"merged_GEX_UMI_mito_QC_plot.pdf"),
+    qc_template = os.path.join(config["OutDir"], "QC_filter_metrics_template.tsv")
+
+def getSTARMatrices(wildcards):
+	return BioSamples_config.loc[wildcards.sample, "PathToFilteredMatrices"]
+
+def getSTARMatrix(wildcards):
+	return os.path.join(BioSamples_config.loc[wildcards.sample, "PathToFilteredMatrices"], "matrix.mtx")
+
+rule reformat_h5:
+    input:
+      h5 = lambda wildcards: os.path.join(BioSamples_config.loc[wildcards.sample,"Cellbenderh5Path"], "{sample}_bg_removed.h5"),
+    output:
+      reformatted_h5 = os.path.join(config["OutDir"],"{sample}/bg_removal/QC", "reformatted_{sample}_bg_removed.h5"),
+    resources:
+      mem_gb=16,
+      runtime_hr=2
+    conda:
+      config["env"]["pytables"]
+    shell:
+      """
+      ptrepack --complevel 5 {input.h5}:/matrix {output.reformatted_h5}:/matrix
+      """
+rule QC:
+    input:
+      reformatted_h5 = os.path.join(config["OutDir"],"{sample}/bg_removal/QC", "reformatted_{sample}_bg_removed.h5"),
+    output:
+      QC_plots = os.path.join(config["OutDir"],"{sample}/bg_removal/QC", f"{{sample}}_QC_min_cell_{minCell}.pdf"),
+      QC_mito_plots = os.path.join(config["OutDir"],"{sample}/bg_removal/QC", f"{{sample}}_QC_UMI_vs_mito_{minCell}.pdf"),
+      RDS = os.path.join(config["OutDir"],"{sample}/bg_removal/QC", f"{{sample}}_BgRemoved_SeuratObject_min_cell_{minCell}.RDS")
+    params: 
+      output_dir= os.path.join(config["OutDir"],"{sample}/bg_removal/QC"),
+      FeatureDetectedinAtLeastCells = minCell,
+      STARfilteredMatrices=getSTARMatrices,
+      script_dir=config["ScriptDir"]
+    resources:
+      mem_gb=16,
+      runtime_hr=2
+    conda:
+      config["env"]["scRNA"]
+    shell:
+        """
+        Rscript {params.script_dir}/QC.R \
+        --bg_removed_h5 {input.reformatted_h5} \
+        --OutDir {params.output_dir} \
+        --STARfilteredMatrices {params.STARfilteredMatrices} \
+        --min.cells {params.FeatureDetectedinAtLeastCells} \
+        --sample {wildcards.sample}
+        """
+
+rule createQCtemplate:
+    input:
+        QC_plots = expand(os.path.join(config["OutDir"],"{sample}/bg_removal/QC", f"{{sample}}_QC_min_cell_{minCell}.pdf"),sample=BioSamples),
+        QC_mito_plots = expand(os.path.join(config["OutDir"],"{sample}/bg_removal/QC", f"{{sample}}_QC_UMI_vs_mito_{minCell}.pdf"),sample=BioSamples),
+        RDS = expand(os.path.join(config["OutDir"],"{sample}/bg_removal/QC", f"{{sample}}_BgRemoved_SeuratObject_min_cell_{minCell}.RDS"), sample=BioSamples),
+    output:
+        qc_template = os.path.join(config["OutDir"], "QC_filter_metrics_template.tsv")
+    resources:
+        mem_gb=2,
+        runtime_hr=1
+    run:
+        with open(output. qc_template , 'w+') as f:
+            f.write("Sample\tnUMI_min\tnUMI_max\tnGene_min\tnGene_max\tratio_mt\n")
+            for sample in BioSamples:
+                f.write(sample+"\n")
+
+rule mergePDF:
+    input:
+      QC_plots = expand(os.path.join(config["OutDir"],"{sample}/bg_removal/QC", f"{{sample}}_QC_min_cell_{minCell}.pdf"),sample=BioSamples),
+      QC_mito_plots = expand(os.path.join(config["OutDir"],"{sample}/bg_removal/QC", f"{{sample}}_QC_UMI_vs_mito_{minCell}.pdf"),sample=BioSamples),
+    output:
+      merged_QC_plot = os.path.join(config["OutDir"],"merged_GEX_QC_plot.pdf"),
+      merged_QC_mito_plot = os.path.join(config["OutDir"],"merged_GEX_UMI_mito_QC_plot.pdf")
+    resources:
+      mem_gb=4,
+      runtime_hr=1
+    run:
+      from pypdf import PdfMerger
+      merger = PdfMerger()
+      for pdf in input.QC_plots:
+        merger.append(pdf)
+      merger.write(output.merged_QC_plot)
+      merger.close()
+      mito_merger = PdfMerger()
+      for pdf in input.QC_mito_plots:
+        mito_merger.append(pdf)
+      mito_merger.write(output.merged_QC_mito_plot)
+      mito_merger.close()
+
+rule create_seurat_object_wo_bg_removal:
+    input: 
+      STARfilteredMatrices=getSTARMatrix,
+    output:
+      RDS_w_bg = os.path.join(config["OutDir"],"{sample}/Seurat_wo_bg_removal/", "{sample}_SeuratObject.RDS")
+    params:
+      output_dir= os.path.join(config["OutDir"],"{sample}/Seurat_wo_bg_removal"),
+      FeatureDetectedinAtLeastCells = minCell,
+      STARfilteredMatrices=getSTARMatrices,
+      script_dir=config["ScriptDir"]
+    resources:
+      mem_gb=16,
+      runtime_hr=2
+    conda:
+      config["env"]["scRNA"]
+    shell:
+      """
+        Rscript {params.script_dir}/create_s_w_bg.R \
+          --STARfilteredMatrices  {params.STARfilteredMatrices} \
+          --outdir {params.output_dir} \
+          --sample {wildcards.sample}
+      """

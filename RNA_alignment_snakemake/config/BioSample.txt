@@ -1,0 +1,2 @@
+Sample	FastqFilePath	demuxName	nSample
+FT015016017018	[]/sequence_processing_gex/outs/fastq_path/H3NKCDSX7	FT015016017018	4

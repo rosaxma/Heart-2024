@@ -1,0 +1,25 @@
+scripts_dir: "/oak/stanford/groups/engreitz/Users/rosaxma/github_repos_2/RNA_alignment_snakemake/workflow/scripts"
+StarSolo:
+    STAR: "/oak/stanford/groups/engreitz/Users/rosaxma/software/STAR-2.7.11a/source"
+    OutDir: "/oak/stanford/groups/engreitz/Users/rosaxma/230828_heart_map/alignment/pool_3"
+    SCRATCH: "/scratch/users/rosaxma/heartmap_pool3"
+    BioSampleTable: "/oak/stanford/groups/engreitz/Users/rosaxma/230828_heart_map/alignment/pool_3/biosample.txt"
+    include_intron: True
+    MaximumLaneID: 8 
+  ### the multiome RNA-seq experiments appear to be forward stranded
+    stranded: "Forward"
+  ### parameter to set umi length Chromium V2 uses 10, other versions use 12.
+    umi_length: "12"
+    cb_length: "16"
+    genome_dir: "/oak/stanford/groups/engreitz/Users/rosaxma/2207_ENCODE_alignment/RNA/reference"
+    allow_file: "/oak/stanford/groups/engreitz/Users/rosaxma/2207_ENCODE_alignment/Snakemake/737K-arc-v1.txt"
+
+demuxSample:
+    OutDir: "/oak/stanford/groups/engreitz/Users/rosaxma/230828_heart_map/alignment/pool_3/flowcell_1"
+    souporcell: "/oak/stanford/groups/engreitz/Users/rosaxma/github_repos_2/RNA_alignment_snakemake/resources/souporcell_latest.sif"
+    fasta_ref: "/oak/stanford/projects/genomics-refs/refs/GRCh38_no_alt_analysis_set_GCA_000001405.15.fasta"
+    # the chr of the chromosome id was removed
+    commonVariants: "/oak/stanford/groups/engreitz/Users/rosaxma/resources/common_variants_grch38_chr.vcf"
+env:
+        scRNA: "/oak/stanford/groups/engreitz/Users/rosaxma/github_repos_2/RNA_QC_Snakemake/workflow/envs/R_4.2.0_scRNA.yml"
+        samtools: "/oak/stanford/groups/engreitz/Users/rosaxma/github_repos_2/RNA_alignment_snakemake/workflow/envs/samtools.yml"

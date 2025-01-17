@@ -1,0 +1,413 @@
+import os
+import pandas as pd
+import subprocess
+import numpy as np
+
+BioSampleConfigFile=config["SampleSheet"]
+BioSamples_config = pd.read_table(BioSampleConfigFile, na_values="").fillna("None").set_index("Sample", drop=False)
+BioSamples=list(BioSamples_config.index.values)
+print(BioSamples)
+
+#######################################################
+def getOutputPath(wildcards):
+    return BioSamples_config.loc[wildcards.sample,"Fragment_path"].strip() +"/fragments.tsv.gz"
+
+def getMarkdupPath(wildcards):
+    if BioSamples_config.loc[wildcards.sample,"Markdup_path"] != "":
+        return BioSamples_config.loc[wildcards.sample,"Markdup_path"].strip() +"/markdup.txt"
+    else:
+        ""
+def getGEXbarcode(wildcards):
+    return BioSamples_config.loc[wildcards.sample, "GEX_barcodes"].strip() + "/barcodes.tsv.gz"
+
+def getMinFrags(wildcards):
+    if BioSamples_config.loc[wildcards.sample,"minFrags"] != "None":
+        return BioSamples_config.loc[wildcards.sample,"minFrags"]
+    else:
+        return config["CreateArrowfile"]["minFrags"],
+
+def get_size(file_path, unit='bytes'):
+    file_size = os.path.getsize(file_path)
+    exponents_map = {'bytes': 0, 'kb': 1, 'mb': 2, 'gb': 3}
+    if unit not in exponents_map:
+        raise ValueError("Must select from \
+        ['bytes', 'kb', 'mb', 'gb']")
+    else:
+        size = file_size / 1024 ** exponents_map[unit]
+        return round(size, 3)
+
+def getResources(wildcards):
+    path=getOutputPath(wildcards)
+    if get_size(path,unit="gb") < 2:
+        return 32
+    elif get_size(path, unit="gb") < 3.5:
+        return 64
+    else:
+        return 128
+
+#######################################################
+
+rule all:
+    input:
+       arrowfile=expand(os.path.join(config["OutDir"],"{sample}","multiomic", "ArchR", "{sample}.arrow"),sample=BioSamples),
+       merged_tss_by_uniq_valid=expand(os.path.join(config["OutDir"], "merged_tss_by_unique_valid.pdf"),sample=BioSamples),
+       #merged_tss_by_uniq_invalid=expand(os.path.join(config["OutDir"], "merged_tss_by_unique_invalid.pdf"),sample=BioSamples),
+       merged_nuc_signal_distribution=os.path.join(config["OutDir"], "merged_nucleosome_signal.pdf"),
+       ATAC2GEXmapping=expand(os.path.join(config["OutDir"],"{sample}","multiomic","ATACBarcode2GEXmapping.tsv"), sample=BioSamples),
+       multiplet_QC_table=expand(os.path.join(config["OutDir"],"{sample}","multiomic", "QC", "multiplets_ATAC_QC_table.tsv"),sample=BioSamples),
+       kneeplot=expand(os.path.join(config["OutDir"],"{sample}","multiomic","QC","{sample}_Kneeplot.pdf"),sample=BioSamples),
+       ATAC_QC_plots=expand(os.path.join(config["OutDir"],"{sample}","multiomic", "QC","{sample}_ATAC_QC.pdf"),sample=BioSamples),
+       merged_kneeplot=os.path.join(config["OutDir"], "merged_kneeplot.pdf"),
+       merged_ATAC_QC_plots=os.path.join(config["OutDir"], "merged_QC_plots.pdf"),
+       summary_sheet=os.path.join(config["OutDir"], "ATAC_output_summary_sheet.tsv"),
+       combined_multiplet_QC_table=os.path.join(config["OutDir"], "combined_multiplets_ATAC_QC_table.tsv"),
+       combined_multiplet_QC_table_reads=os.path.join(config["OutDir"], "combined_multiplets_ATAC_QC_table_totalATACReads.tsv")
+
+rule CalculateNucSignal:
+    input:
+        fragmentFile=getOutputPath
+    params:
+        scriptdir=config["scriptdir"],
+        nuc_threshold=config["CalculateNucSignal"]["NuclearSignalThreshold"]
+    output:
+        nuc_signal_output_table=os.path.join(config["OutDir"],"{sample}", "QC", "nucleosome_signal.tsv"),
+        nuc_signal_distribution=os.path.join(config["OutDir"],"{sample}", "QC","nucleosome_signal.pdf"),
+    resources:
+        mem_gb=getResources,
+        runtime=2
+    conda:
+        config["envs"]["R_util"]
+    shell:
+        """
+            Rscript {params.scriptdir}/calculateNucleosomeSignal.R \
+                --FragmentFile {input.fragmentFile} \
+                --nuc_signal_threshold {params.nuc_threshold} \
+                --nuc_signal_output_table {output.nuc_signal_output_table} \
+                --nuc_signal_distribution {output.nuc_signal_distribution} \
+                --sample {wildcards.sample}
+        """
+rule mergePDF_nuc_signal:
+    input:
+        nuc_signal_distribution=expand(os.path.join(config["OutDir"],"{sample}", "QC","nucleosome_signal.pdf"),sample=BioSamples),
+    output:
+        merged_nuc_signal_distribution=os.path.join(config["OutDir"], "merged_nucleosome_signal.pdf")
+    resources:
+        mem_gb=4,
+        runtime_hr=2
+    run:
+        from pypdf import PdfMerger
+        merger = PdfMerger()
+        for pdf in input.nuc_signal_distribution:
+           merger.append(pdf)
+        merger.write(output.merged_nuc_signal_distribution)
+        merger.close()
+
+rule mapGEX2ATAC:
+    input:
+        GEX_retained_cell=getGEXbarcode, 
+        fragmentFile=getOutputPath,
+    params:
+        scriptdir=config["scriptdir"],
+        revcom=config["revcom"],
+        barcode_dict=config["ATAC2GEX_dict"],
+        outdir=os.path.join(config["OutDir"],"{sample}","multiomic", "QC")
+    resources:
+        mem_gb=getResources,
+        runtime_hr=2
+    conda:
+        config["envs"]["python_ATAC"]
+    output:
+        atac_barcodes_to_keep=os.path.join(config["OutDir"],"{sample}/multiomic/QC/retained_GEX_cells_for_archR.tsv"),
+    shell:
+        """
+        python {params.scriptdir}/mapGEX2ATAC.py \
+                --barcode_dict {params.barcode_dict} \
+                --GEX_barcodes {input.GEX_retained_cell} \
+                --outdir {params.outdir} \
+                --revcom {params.revcom} \
+                --sample {wildcards.sample} \
+                --frag {input.fragmentFile}
+        """
+
+rule CreateArrowfile:
+    input:
+        fragmentFile=getOutputPath,
+        atac_barcodes_to_keep=os.path.join(config["OutDir"],"{sample}/multiomic/QC/retained_GEX_cells_for_archR.tsv"),
+        nuc_signal_output_table=os.path.join(config["OutDir"],"{sample}", "QC", "nucleosome_signal.tsv"),
+    output:
+        arrowfile=os.path.join(config["OutDir"],"{sample}","multiomic", "ArchR", "{sample}.arrow"),
+        tss_by_unique_frag_valid=os.path.join(config["OutDir"],"{sample}","multiomic", "ArchR", "QualityControl","{sample}", "{sample}-TSS_by_Unique_Frags.pdf"),
+        #tss_by_unique_frag_invalid=os.path.join(config["OutDir"],"{sample}","multiomic", "ArchR_invalid", "QualityControl","{sample}", "{sample}-TSS_by_Unique_Frags.pdf"),
+    params:
+        genome=config["Genome"],
+        minTSS=config["CreateArrowfile"]["minTSS"],
+        minFrags=getMinFrags,
+        workdir=os.path.join(config["OutDir"],"{sample}","multiomic", "ArchR"),
+        scriptdir=config["scriptdir"],
+    threads: 4
+    resources:
+        mem_gb=getResources,
+        runtime_hr=24
+    conda:
+        config["envs"]["R_ATAC"]
+    shell:
+        """
+        mkdir -p {params.workdir};
+        Rscript {params.scriptdir}/CreateArrowFiles.R \
+        --GenomeAssembly {params.genome} \
+        --SampleName {wildcards.sample} \
+        --FragmentFile {input.fragmentFile} \
+        --minTSS {params.minTSS} \
+        --minFrags {params.minFrags} \
+        --WorkDir {params.workdir} \
+        --Threads $(({threads} * 2)) \
+        --ATAC_barcodes {input.atac_barcodes_to_keep} \
+        --nuc_signal_table {input.nuc_signal_output_table}
+        """
+rule mergePDF_tss_by_unique:
+    input:
+        tss_by_unique_frag_valid=expand(os.path.join(config["OutDir"],"{sample}","multiomic", "ArchR", "QualityControl","{sample}", "{sample}-TSS_by_Unique_Frags.pdf"),sample=BioSamples),
+        #tss_by_unique_frag_invalid=expand(os.path.join(config["OutDir"],"{sample}","multiomic", "ArchR_invalid", "QualityControl","{sample}", "{sample}-TSS_by_Unique_Frags.pdf"),sample=BioSamples),
+    output:
+        merged_tss_by_uniq_valid=os.path.join(config["OutDir"], "merged_tss_by_unique_valid.pdf"),
+    resources:
+        mem_gb=4,
+        runtime_hr=2
+    run:
+        from pypdf import PdfMerger
+        merger_1 = PdfMerger()
+        for pdf in input.tss_by_unique_frag_valid:
+           merger_1.append(pdf)
+        merger_1.write(output.merged_tss_by_uniq_valid)
+        merger_1.close()
+
+rule QC:
+    input:
+        arrowfile=os.path.join(config["OutDir"],"{sample}","multiomic","ArchR","{sample}.arrow"),
+        markdup = getMarkdupPath,
+    output:
+        filtered_ATAC_barcodes=os.path.join(config["OutDir"],"{sample}","multiomic", "QC", "filtered_barcodes_in_ATAC.csv"),
+        archr_doublets_barcodes = os.path.join(config["OutDir"],"{sample}","multiomic", "QC", "ArchR_doublet_barcodes_in_ATAC.csv"),
+        ATAC_QC_plots=os.path.join(config["OutDir"],"{sample}","multiomic", "QC","{sample}_ATAC_QC.pdf"),
+        QC_table=os.path.join(config["OutDir"],"{sample}","multiomic", "QC", "ATAC_QC_table.tsv"),
+        cell_info_table=os.path.join(config["OutDir"],"{sample}","multiomic", "QC", "ATAC_cell_info.csv"),
+        rawUMAP=os.path.join(config["OutDir"],"{sample}","multiomic", "QC", "{sample}_rawUMAP.pdf"),
+    params:
+        genome=config["Genome"],
+        workdir=os.path.join(config["OutDir"],"{sample}","multiomic", "ArchR"),
+        outdir=os.path.join(config["OutDir"],"{sample}","multiomic", "QC"),
+        scriptdir=config["scriptdir"]
+    conda:
+        config["envs"]["R_ATAC"]
+    threads: 4
+    resources:
+        mem_gb=16,
+        runtime_hr=24
+    shell:
+        """
+        Rscript {params.scriptdir}/ArchrProject.R \
+        --GenomeAssembly {params.genome} \
+        --WorkDir {params.workdir} \
+        --ArrowFile {input.arrowfile} \
+        --Threads {threads} \
+        --OutDir {params.outdir} \
+        --SampleName {wildcards.sample} \
+        --markdupFile {input.markdup} 
+        """
+
+
+rule DoubletDetection:
+    input:
+        fragmentFile=getOutputPath,
+        filtered_ATAC_barcodes=os.path.join(config["OutDir"],"{sample}","multiomic", "QC", "filtered_barcodes_in_ATAC.csv")
+    output:
+        multipletProb=os.path.join(config["OutDir"],"{sample}","multiomic", "multiplets","MultipletProbabilities.txt"),
+        multipletBarcodes= os.path.join(config["OutDir"],"{sample}","multiomic", "multiplets","MultipletCellIds_01.txt"),
+    params:
+        packagePath=config["DoubletRemoval"]["package_path"],
+        human_chromsomes=os.path.join(config["DoubletRemoval"]["package_path"],"human_autosomes.txt"),
+        repeatFilter=config["DoubletRemoval"]["repeat_filter"],
+        outdir=os.path.join(config["OutDir"],"{sample}","multiomic", "multiplets")
+    conda:
+        config["envs"]["python_ATAC"]
+    resources:
+        mem_gb=16,
+        runtime_hr=24
+    shell:
+        """
+        echo $PWD;
+        sh {params.packagePath}/AMULET.sh {input.fragmentFile} {input.filtered_ATAC_barcodes} {params.human_chromsomes} {params.repeatFilter} {params.outdir} {params.packagePath} 
+
+        """
+
+rule PlotKneePlot:
+    input:
+        fragmentFile=getOutputPath,
+        multipletBarcodes= os.path.join(config["OutDir"],"{sample}","multiomic", "multiplets","MultipletCellIds_01.txt"),
+        archr_doublets_barcodes = os.path.join(config["OutDir"],"{sample}","multiomic", "QC", "ArchR_doublet_barcodes_in_ATAC.csv"),
+    output:
+        kneeplot=os.path.join(config["OutDir"],"{sample}","multiomic", "QC", "{sample}_Kneeplot.pdf")
+    params:
+        outdir=os.path.join(config["OutDir"],"{sample}","multiomic", "QC"),
+        scriptdir=config["scriptdir"]
+    threads: 1
+    resources: 
+        mem_gb=getResources,
+        runtime_hr=10
+    conda:
+        config["envs"]["R_util"]
+    shell:
+        """
+        Rscript {params.scriptdir}/plotKneePlot.R \
+        --outdir {params.outdir} \
+        --FragmentFile {input.fragmentFile} \
+        --sample {wildcards.sample} \
+        --AmuletMultiplets {input.multipletBarcodes} \
+        --ArchRMultiplets {input.archr_doublets_barcodes}
+        """
+
+rule addMultipletCountToQC:
+    input:
+        QC_table=os.path.join(config["OutDir"],"{sample}","multiomic", "QC", "ATAC_QC_table.tsv"),
+        multipletBarcodes= os.path.join(config["OutDir"],"{sample}","multiomic", "multiplets","MultipletCellIds_01.txt"),
+	    archr_doublets_barcodes = os.path.join(config["OutDir"],"{sample}","multiomic", "QC", "ArchR_doublet_barcodes_in_ATAC.csv")
+    output:
+        multiplet_QC_table=os.path.join(config["OutDir"],"{sample}","multiomic", "QC", "multiplets_ATAC_QC_table.tsv")
+    resources:
+        mem_gb=8,
+        runtime_hr=10
+    run:
+        with open(input.multipletBarcodes, "r") as f:
+            for count, line in enumerate(f, start=1):
+                pass
+        nMultiplets=count
+        count=0
+        with open(input.archr_doublets_barcodes, "r") as f:
+            for count, line in enumerate(f, start=1):
+                pass
+        nDoublets=count
+        import pandas as pd 
+        qc=pd.read_csv(input.QC_table,sep="\t")
+        qc["AmuletMultiplets"]=nMultiplets
+        qc["ArchRDoublets"]=nDoublets
+        qc.to_csv(output.multiplet_QC_table, sep="\t",index=False)
+
+
+rule mapATACtoGEX:
+    input:
+        multipletBarcodes=os.path.join(config["OutDir"],"{sample}","multiomic", "multiplets","MultipletCellIds_01.txt"),
+        archr_doublets_barcodes = os.path.join(config["OutDir"],"{sample}","multiomic", "QC", "ArchR_doublet_barcodes_in_ATAC.csv"),
+	    barcode_dict=config["ATAC2GEX_dict"],
+        cell_info_table=os.path.join(config["OutDir"],"{sample}","multiomic", "QC", "ATAC_cell_info.csv"),
+    output:
+        ATAC2GEXmapping=os.path.join(config["OutDir"],"{sample}","multiomic", "ATACBarcode2GEXmapping.tsv")
+    params:
+        outdir=os.path.join(config["OutDir"],"{sample}","multiomic"),
+        scriptdir=config["scriptdir"],
+        revcom=config["revcom"]
+    resources:
+        mem_gb=32,
+        runtime_hr=24
+    conda:
+        config["envs"]["python_ATAC"]
+    shell:
+        """
+        python {params.scriptdir}/mapATAC2GEX.py \
+        --barcode_dict {input.barcode_dict} \
+        --ATACMultipletsBarcodes {input.multipletBarcodes} \
+	    --ATACDoubletsBarcodes {input.archr_doublets_barcodes} \
+        --ATACCellInfoTable {input.cell_info_table} \
+        --outdir {params.outdir} \
+        --revcom {params.revcom}
+        """
+
+rule mergePDF:
+    input:
+        kneeplots=expand(os.path.join(config["OutDir"],"{sample}","multiomic", "QC", "{sample}_Kneeplot.pdf"),sample=BioSamples),
+    output:
+        merged_kneeplot=os.path.join(config["OutDir"], "merged_kneeplot.pdf")
+    resources:
+        mem_gb=4,
+        runtime_hr=2
+    run:
+        from pypdf import PdfMerger
+        merger = PdfMerger()
+        for pdf in input.kneeplots:
+            merger.append(pdf)
+        merger.write(output.merged_kneeplot)
+        merger.close()
+
+rule mergePDF_QC:
+    input:
+        ATAC_QC_plots=expand(os.path.join(config["OutDir"],"{sample}","multiomic", "QC","{sample}_ATAC_QC.pdf"),sample=BioSamples),
+    output:
+        merged_ATAC_QC_plots=os.path.join(config["OutDir"], "merged_QC_plots.pdf")
+    resources:
+        mem_gb=4,
+        runtime_hr=2
+    run:
+        from pypdf import PdfMerger
+        merger = PdfMerger()
+        for pdf in input.ATAC_QC_plots:
+            merger.append(pdf)
+        merger.write(output.merged_ATAC_QC_plots)
+        merger.close()
+
+rule create_atac_summary_sheets:
+    input:
+        ATAC2GEXmapping=expand(os.path.join(config["OutDir"],"{sample}","multiomic", "ATACBarcode2GEXmapping.tsv"),sample=BioSamples),
+        arrowfile=expand(os.path.join(config["OutDir"],"{sample}","multiomic", "ArchR", "{sample}.arrow"),sample=BioSamples),
+    output:
+        summary_sheet=os.path.join(config["OutDir"], "ATAC_output_summary_sheet.tsv")
+    resources:
+        mem_gb=2,
+        runtime_hr=2
+    run:
+        with open(output.summary_sheet, 'w+') as f:
+            f.write("Sample\tATAC_doublets\tArrowfile\n")
+            for sample in BioSamples:
+                ATAC_doublets=os.path.join(config["OutDir"],sample,"multiomic", "ATACBarcode2GEXmapping.tsv")
+                arrowfile=os.path.join(config["OutDir"],sample,"multiomic", "ArchR", sample+".arrow")
+                f.write(sample+"\t"+ATAC_doublets+"\t"+arrowfile+"\n")
+
+
+rule combineQC:
+    input:
+        multiplet_QC_tables=expand(os.path.join(config["OutDir"],"{sample}","multiomic", "QC", "multiplets_ATAC_QC_table.tsv"), sample=BioSamples),
+    output:
+        combined_multiplet_QC_table=os.path.join(config["OutDir"], "combined_multiplets_ATAC_QC_table.tsv")
+    resources:
+        mem_gb=4,
+        runtime_hr=10
+    shell:
+        """
+        counter=0
+        for table in {input.multiplet_QC_tables}
+        do 
+            counter=$((counter + 1))
+            if [[ $counter == 1 ]]
+            then
+                cat $table > {output.combined_multiplet_QC_table}
+            else
+                sed 1d $table >> {output.combined_multiplet_QC_table}
+            fi
+        done
+
+        """
+
+rule combineTotalReads2QC:
+    input:
+        combined_multiplet_QC_table=os.path.join(config["OutDir"], "combined_multiplets_ATAC_QC_table.tsv"),
+        combined_total_ATAC_reads=config["totalATACReads"]
+    output:
+        combined_multiplet_QC_table_reads=os.path.join(config["OutDir"], "combined_multiplets_ATAC_QC_table_totalATACReads.tsv"),
+    resources:
+        mem_gb=4,
+        runtime_hr=1
+    run:
+        qc_df = pd.read_table(input.combined_multiplet_QC_table, na_values="").fillna("None")
+        print(qc_df.head)
+        reads_df = pd.read_table(input.combined_total_ATAC_reads, na_values="").fillna("None")
+        print(reads_df.head)
+        combined_table = qc_df.merge(reads_df, how='left', on='Sample')
+        combined_table.to_csv(output.combined_multiplet_QC_table_reads, sep="\t",index=False)

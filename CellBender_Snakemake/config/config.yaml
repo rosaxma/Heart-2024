@@ -1,0 +1,5 @@
+BgRemoval:
+    OutDir: "alignment/pool_3"
+    SampleSheet: "config/matrix_samplesheet_1_cellbender.tsv"
+    fpr: 0.01
+    env: "envs/cellbender_0_3_0.yml" 

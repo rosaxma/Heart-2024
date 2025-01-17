@@ -1,0 +1,102 @@
+#######
+# Pipeline Settings
+#######
+
+# The pipeline working directory
+# All relative paths in the pipeline are relative to this
+# By default, use current working directory
+workdir: /scratch
+scriptdir: workflow/scripts
+# Maximum number of threads per rule
+# Actual number of threads used may be lower depending on runtime arguments
+max_threads_per_rule: 32
+
+#######
+# Main Input/Output Settings
+#######
+sample_table: config/samples/tsv
+# Common base directory for all input FASTQs 
+# Note: sample-specific sub-directories can be set in samples.tsv
+input_dir: ""
+
+# This specifies names of the reads within each sample's FASTQ files
+# r1: first read in pair
+# r2: second read in pair
+# bc: barcode read
+# The preset names below are typical for 10x datasets
+# The specific location of these names in the FASTQ filenames can be set in samples.tsv
+read_names:
+  r1: R1
+  r2: R3
+  bc: R2
+
+# Final output directory for results
+output_dir: atac_alignment/pool_3
+
+#######
+# Genome Settings
+#######
+
+# Genome FASTA URL
+genome: https://www.encodeproject.org/files/GRCh38_no_alt_analysis_set_GCA_000001405.15/@@download/GRCh38_no_alt_analysis_set_GCA_000001405.15.fasta.gz
+
+# Name of the mitochondrial chromosome in the genome
+mito_chr: chrM
+
+#######
+# Barcode Correction Settings
+#######
+
+# Maximum hamming distance to tolerate between observed and whitelisted barcode
+# Can be 0, 1, or 2, with recommended default being 1
+max_barcode_dist: 1
+
+# URLs of barcode whitelists
+whitelist_paths:
+#  10x: http://mitra.stanford.edu/kundaje/atwang/atac_whitelists/737K-cratac-v1.txt.gz
+#  multiome: http://mitra.stanford.edu/kundaje/atwang/atac_whitelists/737K-arc-v1.txt.gz
+   multiome: /home/groups/engreitz/Software/cellranger-arc-2.0.0/lib/python/atac/barcodes/737K-arc-v1.txt.gz
+# Barcode whitelist to use for dataset
+whitelist_choice: multiome
+
+# Whether to reverse complement the whitelist
+# This is dependent on the exact sequencing platform
+# The easiest way to find out is to grep an observed barcode and its reverse complement against the whitelist
+whitelist_revcomp: TRUE
+
+# A prefix or suffix to add to each barcode in the whitelist
+# If the whitelist is reverse-complemented, this is done after reverse-complementation
+# This is also dependent on the sequencing platform
+# To find out, check if the observed barcodes are longer than the barcodes in the whitelist
+# For no prefix/suffix, use an empty string ''
+bc_prefix: ''
+bc_suffix: ''
+
+#######
+# Aligner Settings
+#######
+
+# Aligner to use
+# One of "chromap" or "bwt2"
+# Chromap is significantly faster but is more memory-intensive
+aligner: bwt2
+
+# Maximum number of locations a read can map to
+# We recommend keeping multi-mapping reads to improve discovery
+# Default is 4
+multimapping: 4
+
+#######
+# Fragment File Settings
+#######
+
+# Tn5 enzyme shift for the read coordinates of each fragment
+# We recommend a +4/-4 shift, which is crucial for training ChromBPNet models
+# This means that the + strand read pair start coordinate is increased by 4 bp
+# And the - strand read pair start coordinate is decreased by 4 bp
+# Note that this is different from the +4/-5 shift commonly seen in literature
+tn5_shift_plus: 4
+tn5_shift_minus: -4
+
+GenerateSampleSheet:
+        GEX_out: atac_alignment/pool_3

@@ -1,0 +1,23 @@
+SampleSheet: config/samplesheet.tsv
+scriptdir: workflow/scripts
+OutDir: atac_alignment/pool_3
+Genome: hg38
+totalATACReads: atac_alignment/pool_3/total_ATAC_reads.tsv
+
+CreateArrowfile:
+  minTSS: 6 
+  minFrags: 1000
+DoubletRemoval:
+  # Amulet: https://github.com/UcarLab/AMULET
+  package_path: [path to]/AMULET
+  # create from merging genomicSuperDups(https://genome.ucsc.edu/cgi-bin/hgTables?db=hg38&hgta_group=rep&hgta_track=genomicSuperDups&hgta_table=genomicSuperDups&hgta_doSchema=describe+table+schema), simpleRepeat(https://genome.ucsc.edu/cgi-bin/hgTables?db=hg38&hgta_group=rep&hgta_track=simpleRepeat&hgta_table=simpleRepeat&hgta_doSchema=describe+table+schema), and ENCODE.blacklist(https://www.encodeproject.org/files/ENCFF356LFX/) using "bedops --merge" according to: https://github.com/UcarLab/AMULET/issues/15   
+  repeat_filter: resources/restrictionlist_repeats_segdups_rmsk_hg38.bed
+
+ATAC2GEX_dict: resources/ATAC_reverse_complement_GEX_dict.pickle
+revcom: True
+CalculateNucSignal:
+        NuclearSignalThreshold: 2
+envs:
+        python_ATAC: workflow/envs/python_scATAC.yaml
+        R_ATAC: workflow/envs/R_scATAC.yaml
+        R_util: workflow/envs/R_4.3.0.yaml

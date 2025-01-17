@@ -1,0 +1,98 @@
+import os
+import pandas as pd
+import subprocess
+import numpy as np
+
+BioSampleConfigFile=config["BgRemoval"]["SampleSheet"]
+BioSamples_config = pd.read_table(BioSampleConfigFile, na_values="").fillna("None").set_index("Sample", drop=False)
+BioSamples=list(BioSamples_config.index.values)
+print(BioSamples)
+
+localrules: createQCtemplate
+#############################################################
+rule all:
+    input:
+        h5 = expand(os.path.join(config["BgRemoval"]["OutDir"],"{sample}/bg_removal/{sample}_bg_removed.h5"),sample=BioSamples),
+	    html = expand(os.path.join(config["BgRemoval"]["OutDir"],"{sample}/bg_removal/{sample}_bg_removed_report.html"),sample=BioSamples),
+        qc_template = os.path.join(config["BgRemoval"]["OutDir"], "QC_input_table_template.tsv")
+def getGPUmem(wildcards):
+    total_droplets = BioSamples_config.loc[wildcards.sample,"TotalDroplets"]
+    if total_droplets < 20000:
+        return "16GB"
+#elif 20000 <= total_droplets and total_droplets < 60000:
+#        return "24GB"
+    else:
+        return "24GB"
+
+def getCPUmem(wildcards):
+    total_droplets = BioSamples_config.loc[wildcards.sample, "TotalDroplets"]
+    if total_droplets < 60000:
+       return "32GB"
+    else:
+       return "48GB"
+
+def getBatchSize(wildcards):
+    total_droplets = BioSamples_config.loc[wildcards.sample,"TotalDroplets"]
+    if total_droplets < 20000:
+        return "128"
+    else:
+        return "64"
+
+#def getCellNumForPosRegCalc(wildcards):
+#    total_droplets = BioSamples_config.loc[wildcards.sample,"TotalDroplets"]
+#    if total_droplets < 20000:
+#        return "100"
+#    else:
+#        return "25"
+
+
+
+rule bgRemoval:
+    output:
+        h5 = os.path.join(config["BgRemoval"]["OutDir"],"{sample}/bg_removal/{sample}_bg_removed.h5"),
+        html=os.path.join(config["BgRemoval"]["OutDir"],"{sample}/bg_removal/{sample}_bg_removed_report.html"),
+    params:
+        PathToMatrices = lambda wildcards: os.path.join(BioSamples_config.loc[wildcards.sample,"PathToRawMatrices"]),
+        output_dir= os.path.join(config["BgRemoval"]["OutDir"],"{sample}/bg_removal"),
+        expected_cells= lambda wildcards: BioSamples_config.loc[wildcards.sample,"ExpectedCells"],
+        total_droplets=lambda wildcards: BioSamples_config.loc[wildcards.sample,"TotalDroplets"],
+        fpr= config["BgRemoval"]["fpr"],
+        epochs=lambda wildcards: BioSamples_config.loc[wildcards.sample,"Epochs"],
+        batch_size=getBatchSize, 
+        learning_rate = lambda wildcards: BioSamples_config.loc[wildcards.sample,"LearningRate"], 
+	#nCell=getCellNumForPosRegCalc
+    conda:
+        config["BgRemoval"]["env"]
+    resources:
+        runtime_hr=24,
+        gpu_mem_gb=getGPUmem, 
+        cpu_mem_gb=getCPUmem
+    shell:
+        """
+        cd {params.output_dir};
+        cellbender remove-background \
+        --input {params.PathToMatrices} \
+        --output {output.h5} \
+        --expected-cells {params.expected_cells}\
+        --total-droplets-included {params.total_droplets} \
+        --fpr {params.fpr} \
+        --cuda \
+        --epochs {params.epochs} \
+        --posterior-batch-size {params.batch_size} \
+        --learning-rate {params.learning_rate}
+        """
+
+rule createQCtemplate:
+    input:
+        h5 = expand(os.path.join(config["BgRemoval"]["OutDir"],"{sample}/bg_removal/{sample}_bg_removed.h5"),sample=BioSamples),
+    output:
+        qc_template = os.path.join(config["BgRemoval"]["OutDir"], "QC_input_table_template.tsv")
+    run:
+        with open(output.qc_template, 'w+') as f:
+            f.write("Sample\tPathToFilteredMatrices\tCellbenderh5Path\n")
+            for sample in BioSamples:
+                PathToFilteredMatrices=BioSamples_config.loc[sample,"PathToFilteredMatrices"]
+                Cellbenderh5Path=os.path.join(config["BgRemoval"]["OutDir"],sample, "bg_removal")
+                print(PathToFilteredMatrices)
+                print(Cellbenderh5Path)
+                f.write(sample+"\t"+PathToFilteredMatrices+"\t"+Cellbenderh5Path+"\n")

@@ -1,0 +1,16 @@
+channels:
+  - austintwang
+  - conda-forge
+  - bioconda
+  - nodefaults
+dependencies:
+  - bioconda::fastp=0.22.0
+  - bioconda::samtools=1.13
+  - bioconda::htslib=1.13
+  - bioconda::pysam=0.16.0
+  - bioconda::picard-slim=2.25.7
+  - bioconda::bowtie2=2.4.4
+  - conda-forge::libcurl-static=7.78.0
+  - conda-forge::python=3.9.7
+  - conda-forge::numpy=1.21.2
+  - austintwang::matcha

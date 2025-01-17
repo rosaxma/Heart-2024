@@ -1,0 +1,7 @@
+ScriptDir: "workflow/scripts"
+OutDir: "alignment/pool_3"
+SampleSheet: "config/cellbender_h5.tsv"
+minCell: 10
+env:
+        scRNA: "workflow/envs/R_4.2.0_scRNA.yml"
+        pytables: "workflow/envs/pytables.yml"

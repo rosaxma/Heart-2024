@@ -1,0 +1,2 @@
+Sample	PathToRawMatrices	PathToFilteredMatrices	ExpectedCells	TotalDroplets	LearningRate	Epochs
+FT021_SVD_30K	/oak/stanford/groups/engreitz/Users/rosaxma/230828_heart_map/alignment/pool_3/FT021_SVD_30K/FT021_SVD_30KSolo.out/GeneFull_Ex50pAS/raw	/oak/stanford/groups/engreitz/Users/rosaxma/230828_heart_map/alignment/pool_3/FT021_SVD_30K/FT021_SVD_30KSolo.out/GeneFull_Ex50pAS/filtered	16000	65000	0.00002	200

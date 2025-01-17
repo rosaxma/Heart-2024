@@ -1,0 +1,464 @@
+#https://github.com/detrout/woldlab-rna-seq/blob/main/workflow/starsolo.snakefile
+import gzip
+import os
+import pandas as pd
+import subprocess
+import numpy as np
+from glob import glob
+
+
+include:  'rules/pre_star.smk'
+#############################################################
+BioSampleConfigFile=config["StarSolo"]["BioSampleTable"]
+BioSamples_config = pd.read_table(BioSampleConfigFile, na_values="").fillna("None").set_index("Sample", drop=False)
+BioSamples=list(BioSamples_config.index.values)
+BioSamples_demux=BioSamples_config[BioSamples_config["nSample"]!=1].index.values
+max_lane=config["StarSolo"]["MaximumLaneID"]
+#############################################################
+def get_R1_input_fastq_names(wildcards):
+    fastq_paths=BioSamples_config.loc[wildcards.sample,"FastqFilePath"].split(";")
+    demuxNames=BioSamples_config.loc[wildcards.sample,"demuxName"].split(";")
+    R1_fastqs=[]
+    for i in range(len(fastq_paths)):
+        fastq_path=fastq_paths[i]
+        demuxName=demuxNames[i]
+        current_dir= os.getcwd()
+        os.chdir(fastq_path)
+        for lane in range(1,max_lane+1):
+            fastq_file_list = glob(demuxName+"*L00"+str(lane)+"*R1*")
+            if len(fastq_file_list):
+               fastq_file_list.sort()
+               fastq_file_list_with_path=[os.path.join(fastq_path,x) for x in fastq_file_list]
+               R1_fastqs.extend(fastq_file_list_with_path)
+        os.chdir(current_dir)
+    return set(R1_fastqs)
+    
+
+def get_R2_input_fastq_names(wildcards):
+    fastq_paths=BioSamples_config.loc[wildcards.sample,"FastqFilePath"].split(";")
+    demuxNames=BioSamples_config.loc[wildcards.sample,"demuxName"].split(";")
+    R2_fastqs=[]
+    for i in range(len(fastq_paths)):
+        fastq_path=fastq_paths[i]
+        demuxName=demuxNames[i]
+        current_dir= os.getcwd()
+        os.chdir(fastq_path)
+        for lane in range(1,max_lane+1):
+            fastq_file_list = glob(demuxName+"*L00"+str(lane)+"*R2*")
+            if len(fastq_file_list):
+               fastq_file_list.sort()
+               fastq_file_list_with_path=[os.path.join(fastq_path,x) for x in fastq_file_list]
+               R2_fastqs.extend(fastq_file_list_with_path)
+        os.chdir(current_dir)
+    return set(R2_fastqs)
+
+def list2string_R1(wildcards):
+    fastq_paths=BioSamples_config.loc[wildcards.sample,"FastqFilePath"].split(";")
+    demuxNames=BioSamples_config.loc[wildcards.sample,"demuxName"].split(";")
+    R1_fastqs=[]
+    for i in range(len(fastq_paths)):
+        fastq_path=fastq_paths[i]
+        demuxName=demuxNames[i]
+        current_dir= os.getcwd()
+        os.chdir(fastq_path)
+        for lane in range(1,max_lane+1):
+            fastq_file_list = glob(demuxName+"*L00"+str(lane)+"*R1*")
+            if len(fastq_file_list):
+               fastq_file_list.sort()
+               fastq_file_list_with_path=[os.path.join(fastq_path,x) for x in fastq_file_list]
+               R1_fastqs.extend(fastq_file_list_with_path)
+        os.chdir(current_dir)
+    print(",".join(R1_fastqs))
+    return ",".join(set(R1_fastqs))
+
+
+def list2string_R2(wildcards):
+    fastq_paths=BioSamples_config.loc[wildcards.sample,"FastqFilePath"].split(";")
+    demuxNames=BioSamples_config.loc[wildcards.sample,"demuxName"].split(";")
+    R2_fastqs=[]
+    for i in range(len(fastq_paths)):
+        fastq_path=fastq_paths[i]
+        demuxName=demuxNames[i]
+        current_dir= os.getcwd()
+        os.chdir(fastq_path)
+        for lane in range(1,max_lane+1):
+            fastq_file_list = glob(demuxName+"*L00"+str(lane)+"*R2*")
+            if len(fastq_file_list):
+               fastq_file_list.sort()
+               fastq_file_list_with_path=[os.path.join(fastq_path,x) for x in fastq_file_list]
+               R2_fastqs.extend(fastq_file_list_with_path)
+        os.chdir(current_dir)
+    print(",".join(R2_fastqs))
+    print(len(R2_fastqs))
+    return ",".join(set(R2_fastqs))
+
+def getSampleNumber(wildcards):
+    return BioSamples_config.loc[wildcards.sample,"nSample"]
+
+def get_gene_model(config):
+    return "GeneFull_Ex50pAS" if config["StarSolo"]['include_intron'] else "Gene"
+
+def get_tmpdir(wildcards):
+    return os.path.join(config["StarSolo"]["SCRATCH"],wildcards.sample)
+#############################################################
+rule all:
+    input:
+       bam=expand(os.path.join(config["StarSolo"]["OutDir"],"{sample}/{sample}Aligned.sortedByCoord.out.bam"),sample=BioSamples),
+       index_bam=expand(os.path.join(config["StarSolo"]["OutDir"],"{sample}/{sample}Aligned.sortedByCoord.out.bam.bai"),sample=BioSamples),
+       compressed_barcode_matrix = expand(os.path.join(config["StarSolo"]["OutDir"],"{sample}/{sample}Solo.out",  get_gene_model(config), "raw", "barcodes.tsv.gz"), sample=BioSamples),
+       kneeplot=expand(os.path.join(config["StarSolo"]["OutDir"],"{sample}/kneeplot", "{sample}Kneeplot.pdf"), sample=BioSamples),
+       SampleSheet = os.path.join(config["StarSolo"]["OutDir"],"matrix_samplesheet_1.tsv"),
+       compressed_filtered_matrix_matrix = expand(os.path.join(config["StarSolo"]["OutDir"],"{sample}/{sample}Solo.out",  get_gene_model(config), "filtered", "matrix.mtx.gz"), sample=BioSamples),
+       demuxOutput = expand(os.path.join(config["demuxSample"]["OutDir"],"{sample}/SampleDemux/clusters.tsv"), sample=BioSamples),
+       countTable_cluster=expand(os.path.join(config["demuxSample"]["OutDir"],"{sample}/SampleDemux/countTable.tsv"),sample=BioSamples_demux),
+       SummarySheet = os.path.join(config["StarSolo"]["OutDir"],"summary_sheet.tsv"),
+       merged_kneeplot=os.path.join(config["StarSolo"]["OutDir"], "merged_kneeplot.pdf"),
+       hom_vcf=expand(os.path.join(config["demuxSample"]["OutDir"],"{sample}/SampleDemux/cluster_genotypes_hom.vcf"),sample=BioSamples),
+       combined_input_file = os.path.join(config["StarSolo"]["OutDir"], "all_input_file.log.tsv"),
+       doublet_removal_sheet = os.path.join(config["StarSolo"]["OutDir"],"sheet_for_doublet_removal.tsv")
+
+rule star_solo_10x:
+    input:
+        sequence_reads = get_R2_input_fastq_names,
+        barcode_reads = get_R1_input_fastq_names,
+        allow_list = config["StarSolo"]["allow_file"],
+    params:
+        stranded = config["StarSolo"]['stranded'],
+        gene_model = get_gene_model(config),
+        umi_length = int(config["StarSolo"]["umi_length"]),
+        cb_length = int(config["StarSolo"]["cb_length"]),
+        genome_index = config["StarSolo"]["genome_dir"],
+        sequence_reads = list2string_R2,
+        barcode_reads = list2string_R1,
+        outdir=os.path.join(config["StarSolo"]["OutDir"],"{sample}/{sample}"),
+        star_tmp = temp(directory(get_tmpdir)),
+	STAR=config["StarSolo"]["STAR"],
+	scratch=config["StarSolo"]["SCRATCH"]
+    resources:
+        mem_gb=150,
+        mem_bytes = 140 * (2 ** 30),
+        runtime_hr=24
+    threads: 12
+    log: os.path.join(config["StarSolo"]["OutDir"],"{sample}/log/logstar_solo_10x.out")
+    output:
+        aligned_bam = os.path.join(config["StarSolo"]["OutDir"],"{sample}/{sample}Aligned.sortedByCoord.out.bam"),
+        barcode_matrix = os.path.join(config["StarSolo"]["OutDir"],"{sample}/{sample}Solo.out",  get_gene_model(config), "raw", "barcodes.tsv"),
+        features_matrix = os.path.join(config["StarSolo"]["OutDir"],"{sample}/{sample}Solo.out",  get_gene_model(config), "raw", "features.tsv"),
+        matrix_matrix = os.path.join(config["StarSolo"]["OutDir"],"{sample}/{sample}Solo.out",  get_gene_model(config), "raw", "matrix.mtx"),
+        filtered_barcode_matrix = os.path.join(config["StarSolo"]["OutDir"],"{sample}/{sample}Solo.out",  get_gene_model(config), "filtered", "barcodes.tsv"),
+        filtered_features_matrix = os.path.join(config["StarSolo"]["OutDir"],"{sample}/{sample}Solo.out",  get_gene_model(config), "filtered", "features.tsv"),
+        filtered_matrix_matrix = os.path.join(config["StarSolo"]["OutDir"],"{sample}/{sample}Solo.out",  get_gene_model(config), "filtered", "matrix.mtx"),
+        summary = os.path.join(config["StarSolo"]["OutDir"],"{sample}/{sample}Solo.out",  "GeneFull_Ex50pAS", "Summary.csv"),
+    shell:
+        """
+	mkdir -p {params.scratch};
+        cd {params.STAR};
+        if [ -e {params.star_tmp} ]; then rm -r {params.star_tmp}; fi;
+        ./STAR --version
+        ./STAR --genomeDir {params.genome_index} \
+           --readFilesIn {params.sequence_reads} {params.barcode_reads} \
+           --readFilesCommand zcat \
+           --runThreadN $(({threads} * 2)) \
+           --genomeLoad NoSharedMemory \
+           --outFilterMultimapNmax 20 \
+           --alignSJoverhangMin 8 \
+           --alignSJDBoverhangMin 1 \
+           --outFilterMismatchNmax 999 \
+           --outFilterMismatchNoverReadLmax 0.04 \
+           --alignIntronMin 20 \
+           --alignIntronMax 1000000 \
+           --alignMatesGapMax 1000000 \
+           --outSAMheaderCommentFile COfile.txt \
+           --outSAMheaderHD @HD VN:1.4 SO:coordinate \
+           --outSAMunmapped Within \
+           --outFilterType BySJout \
+           --outSAMattributes NH HI AS NM MD CB CR CY UB UR UY GX GN \
+           --outSAMstrandField intronMotif \
+           --outSAMtype BAM SortedByCoordinate \
+           --sjdbScore 1 \
+           --clipAdapterType CellRanger4 \
+           --outFilterScoreMin 30 \
+           --soloCBmatchWLtype 1MM_multi_Nbase_pseudocounts \
+           --soloUMIdedup 1MM_CR \
+           --soloUMIfiltering MultiGeneUMI_CR \
+           --soloType CB_UMI_Simple \
+           --soloCellFilter EmptyDrops_CR \
+           --soloUMIlen {params.umi_length} \
+           --soloCBlen {params.cb_length} \
+           --soloBarcodeReadLength 0 \
+           --soloCBwhitelist {input.allow_list} \
+           --soloStrand {params.stranded} \
+           --soloFeatures {params.gene_model} SJ \
+           --soloMultiMappers Unique EM \
+           --limitBAMsortRAM {resources.mem_bytes} \
+           --outTmpDir {params.star_tmp} \
+           --outFileNamePrefix {params.outdir} 2>&1 >> {log}
+        """
+rule log_input_file:
+    input:
+        sequence_reads = get_R2_input_fastq_names,
+        barcode_reads = get_R1_input_fastq_names
+    params:
+        sequence_reads = list2string_R2,
+        barcode_reads = list2string_R1,
+        sample = "{sample}"
+    output:
+        input_files = os.path.join(config["StarSolo"]["OutDir"],"{sample}/{sample}_input_file.log.tsv"),
+    resources:
+        mem_gb=1,
+        runtime_hr=1
+    run:
+        count_unique_sequence_reads = len(input.sequence_reads),
+        count_unique_barcode_reads = len(input.barcode_reads),
+        input_dict={"sample": params.sample, "sequence_reads_file": params.sequence_reads, "sequence_barcode_file": params.barcode_reads, "NumberOfUniqueSequenceReadsFile":count_unique_sequence_reads, "NumberOFUniqueBarcodeReadsFile":count_unique_barcode_reads}
+        input_df=pd.DataFrame(input_dict)
+        input_df.to_csv(output.input_files, sep='\t', index=False)
+
+
+rule summarize_summary_sheets:
+    input: 
+        summary = expand(os.path.join(config["StarSolo"]["OutDir"],"{sample}/{sample}Solo.out",  "GeneFull_Ex50pAS", "Summary.csv"),sample=BioSamples),
+    output:
+        SummarySheet = os.path.join(config["StarSolo"]["OutDir"],"summary_sheet.tsv")
+    params:
+        summary_sheets = ",".join(expand(os.path.join(config["StarSolo"]["OutDir"],"{sample}/{sample}Solo.out",  "GeneFull_Ex50pAS", "Summary.csv"),sample=BioSamples)),
+        samples=",".join(expand("{sample}", sample=BioSamples)),
+        scripts = config["scripts_dir"]
+    resources:
+        mem_gb=2,
+        runtime_hr=1
+    conda:
+        config["env"]["scRNA"]
+    shell:
+        """
+        Rscript {params.scripts}/summary.R \
+            --summarySheets {params.summary_sheets} \
+            --samples {params.samples} \
+            --outputFile {output.SummarySheet}
+        """
+
+rule indexBAM:
+    input:
+        aligned_bam = os.path.join(config["StarSolo"]["OutDir"],"{sample}/{sample}Aligned.sortedByCoord.out.bam")
+    output:
+        index_bam = os.path.join(config["StarSolo"]["OutDir"],"{sample}/{sample}Aligned.sortedByCoord.out.bam.bai")
+    threads: 2
+    resources:
+        mem_gb=4,
+        runtime_hr=4
+    conda:
+        config["env"]["samtools"]
+    shell:
+        """
+        samtools index -@ $(({threads} * 2)) {input.aligned_bam} {output.index_bam}
+        """
+
+rule compressMatrices:
+    input:
+        barcode_matrix = os.path.join(config["StarSolo"]["OutDir"],"{sample}/{sample}Solo.out",  get_gene_model(config), "raw", "barcodes.tsv"),
+        features_matrix = os.path.join(config["StarSolo"]["OutDir"],"{sample}/{sample}Solo.out",  get_gene_model(config), "raw", "features.tsv"),
+        matrix_matrix = os.path.join(config["StarSolo"]["OutDir"],"{sample}/{sample}Solo.out",  get_gene_model(config), "raw", "matrix.mtx"),
+        filtered_barcode_matrix = os.path.join(config["StarSolo"]["OutDir"],"{sample}/{sample}Solo.out",  get_gene_model(config), "filtered", "barcodes.tsv"),
+        filtered_features_matrix = os.path.join(config["StarSolo"]["OutDir"],"{sample}/{sample}Solo.out",  get_gene_model(config), "filtered", "features.tsv"),
+        filtered_matrix_matrix = os.path.join(config["StarSolo"]["OutDir"],"{sample}/{sample}Solo.out",  get_gene_model(config), "filtered", "matrix.mtx")
+    output:
+        compressed_barcode_matrix = os.path.join(config["StarSolo"]["OutDir"],"{sample}/{sample}Solo.out",  get_gene_model(config), "raw", "barcodes.tsv.gz"),
+        compressed_features_matrix = os.path.join(config["StarSolo"]["OutDir"],"{sample}/{sample}Solo.out",  get_gene_model(config), "raw", "features.tsv.gz"),
+        compressed_matrix_matrix = os.path.join(config["StarSolo"]["OutDir"],"{sample}/{sample}Solo.out",  get_gene_model(config), "raw", "matrix.mtx.gz"),
+        compressed_filtered_barcode_matrix = os.path.join(config["StarSolo"]["OutDir"],"{sample}/{sample}Solo.out",  get_gene_model(config), "filtered", "barcodes.tsv.gz"),
+        compressed_filtered_features_matrix = os.path.join(config["StarSolo"]["OutDir"],"{sample}/{sample}Solo.out",  get_gene_model(config), "filtered", "features.tsv.gz"),
+        compressed_filtered_matrix_matrix = os.path.join(config["StarSolo"]["OutDir"],"{sample}/{sample}Solo.out",  get_gene_model(config), "filtered", "matrix.mtx.gz")
+    resources:
+        mem_gb = 4,
+	    runtime_hr = 1
+    shell:
+        """
+        gzip {input.barcode_matrix} 
+        gzip {input.features_matrix} 
+        gzip {input.matrix_matrix}
+        gzip -c {input.filtered_barcode_matrix} > {output.compressed_filtered_barcode_matrix}
+        gzip -c {input.filtered_features_matrix} > {output.compressed_filtered_features_matrix}
+        gzip -c {input.filtered_matrix_matrix} > {output.compressed_filtered_matrix_matrix}
+        """
+
+rule demuxSample:
+    input:
+        aligned_bam = os.path.join(config["StarSolo"]["OutDir"],"{sample}/{sample}Aligned.sortedByCoord.out.bam"),
+        index_bam = os.path.join(config["StarSolo"]["OutDir"],"{sample}/{sample}Aligned.sortedByCoord.out.bam.bai"),
+        filtered_barcodes = os.path.join(config["StarSolo"]["OutDir"],"{sample}/{sample}Solo.out",  get_gene_model(config), "filtered", "barcodes.tsv"),
+    output:
+        demuxOutput=os.path.join(config["demuxSample"]["OutDir"],"{sample}/SampleDemux/clusters.tsv"),
+        vcfOutput=os.path.join(config["demuxSample"]["OutDir"],"{sample}/SampleDemux/cluster_genotypes.vcf"), 
+    params:
+        nSample=getSampleNumber,
+        SoupOrCellLocation=config["demuxSample"]["souporcell"],
+        fasta_ref=config["demuxSample"]["fasta_ref"],
+        outdir=os.path.join(config["demuxSample"]["OutDir"],"{sample}/SampleDemux"), 
+        commonVariants=config["demuxSample"]["commonVariants"],
+    threads: 16
+    resources:
+        mem_gb = 32,
+        runtime_hr = 24
+    shell:
+        """
+        rm -rf {params.outdir}
+        singularity exec {params.SoupOrCellLocation} souporcell_pipeline.py \
+        --bam {input.aligned_bam} \
+        --barcodes {input.filtered_barcodes} \
+        --fasta {params.fasta_ref} \
+        --threads {threads} \
+        --out_dir {params.outdir} \
+        -k {params.nSample} \
+        -p 2 \
+        --common_variants {params.commonVariants} \
+        --skip_remap SKIP_REMAP
+        """
+rule extractCountTable:
+    input:
+        demuxOutput=os.path.join(config["demuxSample"]["OutDir"],"{sample}/SampleDemux/clusters.tsv"),
+    output:
+        doubletBarcodes = os.path.join(config["demuxSample"]["OutDir"],"{sample}/SampleDemux/doubletCBC.tsv"), 
+        singletBarcodes = os.path.join(config["demuxSample"]["OutDir"],"{sample}/SampleDemux/singletCBC.tsv"), 
+        countTable_status=os.path.join(config["demuxSample"]["OutDir"],"{sample}/SampleDemux/countTable_status.tsv"),
+        countTable_cluster_assignment=os.path.join(config["demuxSample"]["OutDir"],"{sample}/SampleDemux/countTable_cluster_assignment.tsv"),
+        countTable_cluster= os.path.join(config["demuxSample"]["OutDir"],"{sample}/SampleDemux/countTable.tsv")
+    params:
+        outdir=os.path.join(config["demuxSample"]["OutDir"],"{sample}/SampleDemux"),
+    resources:
+        mem_gb = 4,
+        runtime_hr = 1
+    shell:
+        """
+        cd {params.outdir}
+        sed 1d {input.demuxOutput} |grep "singlet" | awk -F\"\\t\" "{{ print \$3 }}" | sort |uniq -c > {output.countTable_cluster_assignment}
+        sed 1d {input.demuxOutput} | awk -F\"\\t\" "{{ print \$2 }}" | sort |uniq -c > {output.countTable_status}
+        cat {output.countTable_cluster_assignment} {output.countTable_status} > {output.countTable_cluster}
+        sed 1d {input.demuxOutput} | grep "doublet" | awk -F\"\\t\" "{{ print \$1 }}" > {output.doubletBarcodes}
+        sed 1d {input.demuxOutput} | grep "singlet" | awk -F\"\\t\" "{{ print \$1\"\\t\"\$3 }}" > {output.singletBarcodes}
+        """
+
+rule filterForHom:
+    input:
+        vcfOutput=os.path.join(config["demuxSample"]["OutDir"],"{sample}/SampleDemux/cluster_genotypes.vcf")
+    output:
+        mod_vcf=os.path.join(config["demuxSample"]["OutDir"],"{sample}/SampleDemux/cluster_genotypes_mod.vcf"),
+        hom_vcf=os.path.join(config["demuxSample"]["OutDir"],"{sample}/SampleDemux/cluster_genotypes_hom.vcf")
+    resources:
+        mem_gb=4,
+        runtime_hr=1
+    conda:
+        config["env"]["samtools"]
+    shell:
+        """
+        bcftools view --header-only {input.vcfOutput} |grep "##"> {output.mod_vcf}
+        echo '##FORMAT=<ID=GT,Number=1,Type=String,Description="Genotype"' >> {output.mod_vcf}
+        bcftools view --header-only {input.vcfOutput} |tail -1 >> {output.mod_vcf}
+        bcftools view --no-header {input.vcfOutput} >> {output.mod_vcf}
+        cat {output.mod_vcf} > {output.mod_vcf}_tmp
+        bcftools view -e 'GT[*]="het"' {output.mod_vcf} | bcftools view -e 'GT[*]="./."'  -o {output.hom_vcf}
+        """
+
+
+rule plotKneePlot:
+    input:
+        barcode_matrix = os.path.join(config["StarSolo"]["OutDir"],"{sample}/{sample}Solo.out",  get_gene_model(config), "raw", "barcodes.tsv.gz"),
+        features_matrix = os.path.join(config["StarSolo"]["OutDir"],"{sample}/{sample}Solo.out",  get_gene_model(config), "raw", "features.tsv.gz"),
+        matrix_matrix = os.path.join(config["StarSolo"]["OutDir"],"{sample}/{sample}Solo.out",  get_gene_model(config), "raw", "matrix.mtx.gz")
+    params:
+        outdir = os.path.join(config["StarSolo"]["OutDir"],"{sample}/kneeplot"),
+        matrixdir = os.path.join(config["StarSolo"]["OutDir"],"{sample}/{sample}Solo.out",  get_gene_model(config), "raw"), 
+        scripts = config["scripts_dir"]
+    output:
+        kneeplot=os.path.join(config["StarSolo"]["OutDir"],"{sample}/kneeplot", "{sample}Kneeplot.pdf")
+    resources:
+        mem_gb = 8,
+        runtime_hr = 3
+    conda:
+        config["env"]["scRNA"]
+    shell:
+        """
+        Rscript {params.scripts}/plotKneePlot.R \
+            --outdir {params.outdir} \
+            --matrixdir {params.matrixdir} \
+            --sample {wildcards.sample}
+        """
+
+rule mergePDF:
+    input:
+        kneeplots=expand(os.path.join(config["StarSolo"]["OutDir"],"{sample}/kneeplot", "{sample}Kneeplot.pdf"),sample=BioSamples),
+    output:
+        merged_kneeplot=os.path.join(config["StarSolo"]["OutDir"], "merged_kneeplot.pdf")
+    resources:
+      mem_gb=4,
+      runtime_hr=2
+    run:
+      from pypdf import PdfMerger
+      merger = PdfMerger()
+      for pdf in input.kneeplots:
+        merger.append(pdf)
+      merger.write(output.merged_kneeplot)
+      merger.close()
+
+rule GenerateSampleSheet:
+    input:
+        barcode_matrix = expand(os.path.join(config["StarSolo"]["OutDir"],"{sample}/{sample}Solo.out",  get_gene_model(config), "raw", "barcodes.tsv.gz"), sample=BioSamples),
+        features_matrix = expand(os.path.join(config["StarSolo"]["OutDir"],"{sample}/{sample}Solo.out",  get_gene_model(config), "raw", "features.tsv.gz"),sample=BioSamples),
+        matrix_matrix = expand(os.path.join(config["StarSolo"]["OutDir"],"{sample}/{sample}Solo.out",  get_gene_model(config), "raw", "matrix.mtx.gz"),sample=BioSamples),
+        demuxOutput=expand(os.path.join(config["demuxSample"]["OutDir"],"{sample}/SampleDemux/clusters.tsv"),sample=BioSamples),
+    output: 
+        SampleSheet_1 = os.path.join(config["StarSolo"]["OutDir"],"matrix_samplesheet_1.tsv"),
+        SampleSheet_2 = os.path.join(config["StarSolo"]["OutDir"],"matrix_samplesheet_2.tsv")
+    resources:
+        mem_gb=2,
+        runtime_hr=1
+    run:
+        with open(output.SampleSheet_1, 'w+') as f:
+            f.write("Sample\tPathToRawMatrices\tPathToFilteredMatrices\n")
+            for sample in BioSamples:
+                PathToRawMatrices=os.path.join(config["StarSolo"]["OutDir"], sample, f"{sample}Solo.out", get_gene_model(config), "raw")
+                PathToFilteredMatrices=os.path.join(config["StarSolo"]["OutDir"], sample, f"{sample}Solo.out", get_gene_model(config), "filtered")
+                f.write(sample+"\t"+PathToRawMatrices+"\t"+PathToFilteredMatrices+"\n")
+        with open(output.SampleSheet_2, 'w+') as f:
+            f.write("Sample\tSTARMatrices\tSampleAssignment\n")
+            for sample in BioSamples:
+                PathToDemux=os.path.join(config["StarSolo"]["OutDir"], sample, "SampleDemux/clusters.tsv")
+                f.write(sample+"\t"+config["StarSolo"]["OutDir"]+"\t"+PathToDemux+"\n")
+    
+
+rule combineInputFiles:
+    input:
+        input_files = expand(os.path.join(config["StarSolo"]["OutDir"],"{sample}/{sample}_input_file.log.tsv"),sample=BioSamples),
+    output:
+        combined_input_file = os.path.join(config["StarSolo"]["OutDir"], "all_input_file.log.tsv")
+    resources:
+        mem_gb=2,
+        runtime_hr=1
+    run:
+        input_file_list = [pd.read_csv(f, sep="\t") for f in input.input_files]
+        combined_df=pd.concat(input_file_list, ignore_index=True)
+        combined_df.to_csv(output.combined_input_file, sep='\t', index=False)
+
+rule prepareForDoubletRemovalTable:
+    input:
+        SummarySheet = os.path.join(config["StarSolo"]["OutDir"],"summary_sheet.tsv"),
+        doubletBarcodes = expand(os.path.join(config["demuxSample"]["OutDir"],"{sample}/SampleDemux/doubletCBC.tsv"), sample=BioSamples_demux),
+        countTable_cluster= expand(os.path.join(config["demuxSample"]["OutDir"],"{sample}/SampleDemux/countTable.tsv"),sample=BioSamples_demux),
+    output:
+        doublet_removal_sheet = os.path.join(config["StarSolo"]["OutDir"],"sheet_for_doublet_removal.tsv")
+    resources:
+        mem_gb=4,
+        runtime_hr=1
+    run:
+        summary=pd.read_table(input.SummarySheet, index_col=0, sep="\t")
+        with open(output.doublet_removal_sheet, 'w+') as f:
+            f.write("Sample\tGEXSaturation\tSampleDemux_doublets\tSampleDemux_table\tSampleDemuxCount\n")
+            for sample in BioSamples:
+                Saturation=summary.loc[sample,"SequencingSaturation"]
+                if sample in BioSamples_demux:
+                    SampleDemux_doublets=os.path.join(config["demuxSample"]["OutDir"],sample, "SampleDemux","doubletCBC.tsv")
+                    SampleDemux_table=os.path.join(config["demuxSample"]["OutDir"],sample, "SampleDemux","clusters.tsv")
+                else:
+                    SampleDemux_doublets=""
+                    SampleDemux_table=""
+                SampleCount=BioSamples_config.loc[sample,"nSample"]
+                f.write(sample+"\t"+str(Saturation)+"\t"+SampleDemux_doublets+"\t"+SampleDemux_table+"\t"+str(SampleCount)+"\n")

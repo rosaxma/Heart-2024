@@ -1,0 +1,22 @@
+scripts_dir: "workflow/scripts"
+StarSolo:
+    OutDir: "alignment/pool_3"
+    SCRATCH: "/scratch/"
+    BioSampleTable: "config/BioSample.txt"
+    include_intron: True
+  ### the multiome RNA-seq experiments appear to be forward stranded
+    stranded: "Forward"
+  ### parameter to set umi length Chromium V2 uses 10, other versions use 12.
+    umi_length: "12"
+    cb_length: "16"
+    genome_dir: #download from: https://woldlab.caltech.edu/~diane/genome/GRCh38-V29-male-2.7.8a.tar.gz
+    allow_file: #download from: https://woldlab.caltech.edu/~diane/genome/737K-arc-v1.txt.gz
+
+demuxSample:
+    OutDir: "alignment/pool_3"
+    souporcell: "resources/souporcell_latest.sif"
+    fastq_ref: #download from: https://www.encodeproject.org/files/GRCh38_no_alt_analysis_set_GCA_000001405.15/
+    commonVariants: "resources/common_variants_grch38_chr.vcf"
+env:
+        scRNA: "workflow/envs/R_4.2.0_scRNA.yml"
+        samtools: "workflow/envs/samtools.yml"

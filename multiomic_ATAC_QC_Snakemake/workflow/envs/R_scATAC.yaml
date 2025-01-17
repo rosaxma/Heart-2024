@@ -1,0 +1,22 @@
+name: R_scATAC_macs2
+channels:
+  - conda-forge
+  - bioconda
+  - r
+  - sgriva
+  - bioturing
+dependencies:
+  - r-base=4.1.0
+  - r-tidyverse
+  - r-optparse
+  - r-seurat
+  - r-ggplot2
+  - r-ggridges
+  - r-ggrepel
+  - r-reshape2
+  - r-ggpubr  
+  - r-archr
+  - macs2
+  - bioconductor-bsgenome.hsapiens.ucsc.hg38
+  - bioconductor-repitools
+  

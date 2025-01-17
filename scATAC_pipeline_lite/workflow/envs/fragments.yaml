@@ -1,0 +1,11 @@
+channels:
+  - conda-forge
+  - bioconda
+  - nodefaults
+dependencies:
+  - bioconda::samtools=1.15.1
+  - bioconda::htslib=1.15.1
+  - bioconda::pysam=0.19.0
+  - conda-forge::python=3.9.6
+  - conda-forge::libcurl-static=7.83.1
+  - conda-forge::libdeflate=1.10

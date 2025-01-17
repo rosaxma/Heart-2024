@@ -1,0 +1,15 @@
+name: r_4.3.0
+channels:
+  - conda-forge
+  - bioconda
+  - defaults
+  - r
+dependencies:
+  - r-base=4.3.1
+  - r-tidyverse
+  - r-optparse
+  - r-r.utils
+  - r-ggplot2
+  - r-ggpubr
+  - r-data.table
+  - r-ggrastr

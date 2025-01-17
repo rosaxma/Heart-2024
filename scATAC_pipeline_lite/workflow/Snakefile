@@ -1,0 +1,401 @@
+import os
+from snakemake.utils import min_version
+import pandas as pd
+import functools
+
+min_version("7.8.0")
+
+configfile: 
+    "config/config.yaml"
+conda: "mamba"
+with open(config["sample_table"]) as sample_file:
+    h = ["#"]
+    while h[0].startswith("#"):
+        h = sample_file.readline().rstrip('\n').split('\t')
+    sample_ind = h.index("Sample")
+    lanes_ind = h.index("Lanes")
+    path_ind = h.index("Path")
+    samples = []
+    sample_data = {}
+    for line in sample_file:
+        if line.startswith("#"):
+            continue
+        entries = line.rstrip('\n').split('\t')
+        sample = entries[sample_ind]
+        # creating nested list
+        lanes=[]
+        lanes_groups = entries[lanes_ind].split(";")
+        for group in lanes_groups:
+            lanes.append(group.split(","))
+        path_template=[]
+        path_template_groups = entries[path_ind].split(";")
+        for group in path_template_groups:
+            path_template.append(os.path.join(config["input_dir"], group))
+        samples.append(sample)
+        sample_data[sample] = (lanes, path_template)
+workdir: 
+    config['workdir']
+
+max_threads = config["max_threads_per_rule"]
+
+def script_path(script_name):
+    return str(workflow.source_path(script_name))
+
+include:
+    "rules/chromap.smk"
+include:
+    "rules/bowtie.smk"
+include:
+    "rules/fragments.smk"
+
+rule all:
+    """
+    Generate all outputs (default)
+    """
+    input: 
+      expand(os.path.join(config["output_dir"], "{sample}/alignments_sorted.bam"), sample=samples),
+      expand(os.path.join(config["output_dir"], "{sample}/alignments_sorted.bam.bai"), sample=samples),
+      expand(os.path.join(config["output_dir"], "{sample}/markdup.txt"), sample=samples),
+      expand(os.path.join(config["output_dir"], "{sample}/fragments.tsv.gz"), sample=samples),
+      expand(os.path.join(config["output_dir"], "{sample}/fragments.tsv.gz.tbi"), sample=samples),
+      expand(os.path.join(config["output_dir"], "{sample}/processing_QC/bwt2_stats.txt"),sample=samples),
+      expand(os.path.join(config["output_dir"], "{sample}/processing_QC/barcode_matching_full.tsv"),sample=samples),
+      os.path.join(config["output_dir"],"fragment_samplesheet.tsv"),
+      expand(os.path.join(config["output_dir"],"all_input_file.log.tsv"),sample=samples),
+      os.path.join(config["output_dir"],"summary_sheet.tsv"),
+      total_reads = os.path.join(config["output_dir"],"total_ATAC_reads.tsv")
+
+def fetch_fastq(w):
+	#print(w.read)
+    #print(w.sample)
+    read_name = config["read_names"][w.read]
+    lanes_group, path_template_group = sample_data[w.sample]
+    fastqs=[]
+    for i in range(len(lanes_group)):
+        lanes=lanes_group[i]
+        path_template=path_template_group[i]
+        fastqs.extend([path_template.format(lane=l, read=read_name) for l in lanes])
+    #print(fastqs)
+    return fastqs
+
+def fetch_fastq_str(w):
+    read_name = config["read_names"][w.read]
+    lanes_group, path_template_group = sample_data[w.sample]
+    fastqs=[]
+    for i in range(len(lanes_group)):
+        lanes=lanes_group[i]
+        path_template=path_template_group[i]
+        fastqs.extend([path_template.format(lane=l, read=read_name) for l in lanes])
+    return ",".join(fastqs)
+
+rule organize_fastqs:
+    """
+    Concatenate and organize input FASTQs
+    """
+    input:
+        fetch_fastq
+    output:
+        "fastqs/{sample}/{read}.fastq.gz"
+    resources:
+        mem_gb = 1,
+        runtime_hr = 24
+    conda:
+        "envs/fetch.yaml"
+    shell:
+        "zcat -f {input} | sed 's/ .*//' | gzip -c > {output}"
+
+read_types=["r1","r2","bc"]
+rule log_input_file:
+    input:
+        input_reads = fetch_fastq
+    params:
+        sample = "{sample}",
+        read = "{read}",
+        input_reads_str = fetch_fastq_str
+    output:
+        input_files = os.path.join(config["output_dir"], "{sample}/input_{read}.txt")
+    resources:
+        mem_gb=1,
+        runtime_hr=1
+    run:
+        input_str= params.input_reads_str
+        count_input_reads = len(set(input.input_reads)),
+        input_dict={"sample": params.sample, "input_"+params.read+"_file": input_str, "NumberOfUnique_"+params.read+"_ReadsFile":count_input_reads}
+        input_df=pd.DataFrame(input_dict)
+        input_df.to_csv(output.input_files, sep='\t', index=False)
+
+rule log_input_file_all:
+    input:
+        input_files = expand(os.path.join(config["output_dir"], "{sample}/input_{read}.txt"), sample=samples, read=read_types)
+    params:
+        outdir=config["output_dir"],
+    output:
+        input_files = os.path.join(config["output_dir"],"all_input_file.log.tsv")
+    resources:
+        mem_gb=1,
+        runtime_hr=1
+    run:
+        df_list=[]
+        for sample in samples:
+            r1_input=pd.read_csv(os.path.join(params.outdir, sample, "input_r1.txt"),sep='\t')
+            r2_input=pd.read_csv(os.path.join(params.outdir, sample, "input_r2.txt"),sep='\t')
+            bc_input=pd.read_csv(os.path.join(params.outdir, sample, "input_bc.txt"),sep='\t')
+            sample_df=functools.reduce(lambda x, y: pd.merge(x, y, on = 'sample'), [r1_input,r2_input,bc_input])
+	    #print(sample_df.head)
+	    #print(sample_df.columns)
+            df_list.append(sample_df)
+        combined_df=pd.concat(df_list, ignore_index=True)
+        combined_df.to_csv(output.input_files, sep='\t', index=False)
+
+rule trim_barcodes:
+    """
+    Trim the barcode files to remove the prefix if exists in any lines
+    """
+    input:
+        fq_BC = "fastqs/{sample}/bc.fastq.gz",
+    output:
+        fq_BC_adapter_removed = "fastqs/{sample}/bc.fastq.adapter.removed.gz",
+    params:
+        tmp_file_1 = "fastqs/{sample}/bc.fastq.rc.tmp.fastq",
+        tmp_file_2 = "fastqs/{sample}/bc.fastq.rc.trim.tmp.fastq",
+    conda:
+        "envs/barcodes_trim.yaml"
+    threads: 8
+    resources:
+        mem_gb = 4,
+        runtime_hr = 24
+    shell:
+        """
+        seqtk seq -r {input.fq_BC} > {params.tmp_file_1}
+        fastx_trimmer -l 16 -i {params.tmp_file_1} > {params.tmp_file_2}
+        seqtk seq -r {params.tmp_file_2} |pigz -p {threads} > {output.fq_BC_adapter_removed}
+        rm {params.tmp_file_1}
+        rm {params.tmp_file_2}
+        """
+
+rule fetch_whitelist:
+    """
+    Fetch barcode whitelist
+    """
+    output:
+        "bc_whitelist.txt"
+    params:
+        #url = config["whitelist_paths"][config["whitelist_choice"]],
+        barcode = config["whitelist_paths"][config["whitelist_choice"]],
+        prefix = config["bc_prefix"],
+        suffix = config["bc_suffix"],
+        rc_command = "tr ACGTacgt TGCAtgca | rev " if config["whitelist_revcomp"] else "cat "
+    resources:
+        mem_gb = 1
+    conda:
+        "envs/fetch.yaml"
+    shell:
+        "zcat {params.barcode}| {params.rc_command} | "
+        "sed -e 's/^/{params.prefix}/' -e 's/$/{params.suffix}/' > {output}"
+
+
+rule fetch_genome:
+    """
+    Fetch genome FASTA
+    """
+    output:
+        "genomes/genome.fa"
+    params:
+        url = config["genome"]
+    resources:
+        mem_gb = 1
+    conda:
+        "envs/fetch.yaml"
+    shell:
+        "curl -sS -L {params.url} | zcat -f > {output}"
+
+rule organize_output_bams:
+    """
+    Organize output BAM files
+    """
+    input:
+        "results/{sample}/alignments_sorted.bam"
+    output:
+        os.path.join(config["output_dir"], "{sample}/alignments_sorted.bam")
+    params:
+        url = config["genome"]
+    resources:
+        mem_gb = 2,
+        runtime_hr = 4
+    conda:
+        "envs/fetch.yaml"
+    shell:
+        "mkdir -p `dirname {output}`; "
+        "cp {input} {output}"
+
+rule organize_output_markup:
+    """
+    Organize markup results
+    """
+    input:
+        "results/{sample}/bwt2/markdup.txt"
+    output:
+        os.path.join(config["output_dir"], "{sample}/markdup.txt")
+    resources:
+        mem_gb = 2,
+        runtime_hr = 4
+    conda:
+        "envs/fetch.yaml"
+    shell:
+        "mkdir -p `dirname {output}`; "
+        "cp {input} {output}"
+
+
+rule index_output_bams:
+    """
+    Index output BAM files
+    """
+    input:
+        os.path.join(config["output_dir"], "{sample}/alignments_sorted.bam")
+    output:
+        os.path.join(config["output_dir"], "{sample}/alignments_sorted.bam.bai")
+    threads: 2
+    resources: 
+        mem_gb=4,
+        runtime_hr=4
+    conda:
+	    "envs/bwt2.yaml"
+    shell:
+	    "samtools index -@ $(({threads} * 2)) {input}" 
+	
+
+rule organize_output_fragments:
+    """
+    Organize output fragment files
+    """
+    input:
+        frag = "results/{sample}/fragments.tsv.gz",
+        frag_ind = "results/{sample}/fragments.tsv.gz.tbi"
+    output:
+        frag = os.path.join(config["output_dir"], "{sample}/fragments.tsv.gz"),
+        frag_ind = os.path.join(config["output_dir"], "{sample}/fragments.tsv.gz.tbi")
+    params:
+        url = config["genome"]
+    resources:
+        mem_gb = 2,
+        runtime_hr = 4
+    conda:
+        "envs/fetch.yaml"
+    shell:
+        "mkdir -p `dirname {output.frag}`; "
+        "cp {input.frag} {output.frag}; "
+        "cp {input.frag_ind} {output.frag_ind}"
+
+rule get_multimapped_reads:
+    """
+    Get the effects of "filter_multimappers"
+    """
+    input:
+        raw_bam="results/{sample}/bwt2/raw_collated.bam",
+        primary_align_bam="results/{sample}/bwt2/primary_align.bam"
+    output:
+        os.path.join(config["output_dir"], "{sample}/QC/comparison_before_vs_after_filter.txt")
+    resources:
+        mem_gb = 125,
+        runtime_hr = 8
+    conda:
+        "envs/bwt2.yaml"
+    shell:
+        """
+        java -Xms100g -jar /scratch/users/rosaxma/scATAC/.snakemake/conda/6c156abdc2ff10ab9d942563bf922988/share/picard-slim-2.25.7-0/picard.jar CompareSAMs {input.raw_bam} {input.primary_align_bam} O={output}
+        """
+
+
+rule organize_output_qc_files:
+    """
+    Organize all qc outputs
+    """
+    input:
+       qc_mito = "results/{sample}/frac_mito.tsv",
+       qc_bwt2 = "results/{sample}/bwt2/bwt2_stats.txt",
+       adapter_stats = "results/{sample}/bwt2/trim_adapters.txt",
+       bc_qc="results/{sample}/bwt2/barcode_matching_full.tsv"
+    output:
+       mito=os.path.join(config["output_dir"], "{sample}/processing_QC/frac_mito.tsv"),
+       bwt2=os.path.join(config["output_dir"], "{sample}/processing_QC/bwt2_stats.txt"),
+       adapter=os.path.join(config["output_dir"], "{sample}/processing_QC/trim_adapters.txt"),
+       bc=os.path.join(config["output_dir"], "{sample}/processing_QC/barcode_matching_full.tsv")
+    resources:
+        mem_gb = 4,
+        runtime_hr = 4
+    conda:
+        "envs/fetch.yaml"
+    shell:
+      """
+      cp {input.bc_qc} {output.bc}
+      cp {input.qc_mito} {output.mito}
+      cp {input.qc_bwt2} {output.bwt2}
+      cp {input.adapter_stats} {output.adapter}
+
+      """
+
+rule GenerateTotalReads:
+    input:
+        bc_matching = expand(os.path.join(config["output_dir"], "{sample}/processing_QC/barcode_matching_full.tsv"),sample=samples),
+    params:
+        bc_matching_path = config["output_dir"]
+    output:
+        total_reads = os.path.join(config["output_dir"],"total_ATAC_reads.tsv")
+    resources:
+        mem_gb=2,
+        runtime_hr=1
+    run:
+        with open(output.total_reads, "w+") as f:
+            f.write("Sample\tTotalATACReads\n")
+            for sample in samples:
+                bc_matching_file=os.path.join(params.bc_matching_path, sample, "processing_QC", "barcode_matching_full.tsv")
+                with open(bc_matching_file) as bc:
+                    first_line = bc.readline().strip('\n')
+                    total_reads=first_line.split(" ")[0].split("/")[1]
+                    f.write(sample+"\t"+total_reads+"\n")
+
+      
+rule GenerateSampleSheet:
+    input:
+        frag = expand(os.path.join(config["output_dir"], "{sample}/fragments.tsv.gz"), sample=samples),
+        markdup = expand(os.path.join(config["output_dir"], "{sample}/markdup.txt"), sample=samples),
+    params:
+        gex_outpath = config["GenerateSampleSheet"]["GEX_out"]
+    output: 
+        SampleSheet = os.path.join(config["output_dir"],"fragment_samplesheet.tsv")
+    resources:
+      mem_gb=4,
+      runtime_hr=2
+    run:
+        with open(output.SampleSheet, 'w+') as f:
+            f.write("Sample\tFragment_path\tMarkdup_path\tGEX_barcodes\n")
+            for sample in samples:
+                PathToFrag=os.path.join(config["output_dir"], sample)
+                PathToMarkDup=os.path.join(config["output_dir"], sample)
+                PathToGEX=os.path.join(params.gex_outpath, sample, f"{sample}Solo.out", "GeneFull_Ex50pAS", "filtered")
+                f.write(sample+"\t"+PathToFrag+"\t"+PathToMarkDup+"\t"+PathToGEX+"\n")
+
+rule getSummary:
+    input:
+         bc=expand(os.path.join(config["output_dir"], "{sample}/processing_QC/barcode_matching_full.tsv"), sample=samples),
+         markdup=expand(os.path.join(config["output_dir"], "{sample}/markdup.txt"), sample=samples),
+    output:
+         SummarySheet = os.path.join(config["output_dir"],"summary_sheet.tsv")
+    params:
+         bc_sheets = ",".join(expand(os.path.join(config["output_dir"], "{sample}/processing_QC/barcode_matching_full.tsv"),sample=samples)),
+         markdup_sheets=",".join(expand(os.path.join(config["output_dir"], "{sample}/markdup.txt"), sample=samples)),
+         samples=",".join(expand("{sample}", sample=samples)),
+         scripts=config["scriptdir"]
+    resources:
+         mem_gb=2,
+         runtime_hr=1
+    conda:
+         "envs/R_4.2.0_scRNA.yml"
+    shell:
+        """
+        Rscript {params.scripts}/summary.R \
+            --barcodeSheets {params.bc_sheets} \
+            --markdupSheets {params.markdup_sheets} \
+            --samples {params.samples} \
+            --outputFile {output.SummarySheet}
+        """
