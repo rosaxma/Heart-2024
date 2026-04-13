@@ -1,0 +1,204 @@
+import os
+import pandas as pd
+import subprocess
+import numpy as np
+import ast
+
+BioSampleConfigFile=config["SampleSheet"]
+BioSamples_config = pd.read_table(BioSampleConfigFile, na_values="").fillna("None").set_index("Sample", drop=False)
+BioSamples=list(BioSamples_config.index.values)
+##########################################################################################################
+samples2cluster=BioSamples_config[BioSamples_config["Cluster"]=="T"].index.values
+##########################################################################################################
+def getInputObject(wildcards):
+    return(BioSamples_config.loc[wildcards.sample,"SeuratPath"])
+
+def getRDS(wildcards):
+    if wildcards.sample in samples2cluster:
+        return os.path.join(config["OutDir"], wildcards.sample, wildcards.sample + ".pflogpf.RDS"),
+    else:
+        return BioSamples_config.loc[wildcards.sample,"SeuratPath"]
+
+def getGEP(wildcards):
+    return BioSamples_config.loc[wildcards.sample,"GEP_table"]
+##########################################################################################################
+rule all:
+  input:
+    expand(os.path.join(config["OutDir"],"{sample}","pseudotime_correlation.tsv"), sample=BioSamples),
+    expand(os.path.join(config["OutDir"],"{sample}", "{sample}_UMAP.trajectory.pdf"), sample=BioSamples),
+    expand(os.path.join(config["OutDir"],"{sample}","logs", "tradeSeq_evaluateK_plots_{sample}_complete.tsv"), sample=BioSamples)
+
+rule extractMtx:
+    input:
+        inputSeurat=getInputObject,
+    params:
+        outdir=os.path.join(config["OutDir"],"{sample}", "gene_mtx"),
+        scripts = config["ScriptDir"],
+    output:
+        touch(os.path.join(config["OutDir"],"{sample}","extract_matrix.done")),
+        filtered_matrix_gz = os.path.join(config["OutDir"],"{sample}","gene_mtx","matrix.mtx.gz"),
+        filtered_gene_gz = os.path.join(config["OutDir"],"{sample}","gene_mtx","features.tsv.gz"),
+        filtered_barcode_gz = os.path.join(config["OutDir"],"{sample}","gene_mtx","barcodes.tsv.gz"),
+    conda:
+        config["env"]["trajectory"]
+    resources:
+        mem_gb=32,
+        runtime_hr=24
+    shell:
+        """
+            Rscript {params.scripts}/extract_mtx.R \
+                --SeuratObject {input.inputSeurat} \
+                --outdir {params.outdir} 
+            gzip {params.outdir}/matrix.mtx;
+            gzip {params.outdir}/features.tsv;
+            gzip {params.outdir}/barcodes.tsv;
+        """
+
+rule transformation:
+    input:
+        filtered_matrix_gz = os.path.join(config["OutDir"],"{sample}","gene_mtx","matrix.mtx.gz"),
+        filtered_gene_gz = os.path.join(config["OutDir"],"{sample}","gene_mtx","features.tsv.gz"),
+        filtered_barcode_gz = os.path.join(config["OutDir"],"{sample}","gene_mtx","barcodes.tsv.gz"),
+    output:
+        metrics=os.path.join(config["OutDir"],"{sample}", "gene_mtx", "transformation", "combined_metrics.json"),
+        transformed_mtx=os.path.join(config["OutDir"],"{sample}", "gene_mtx", "transformation", "matrix", "matrix.mtx.gz")
+    params:
+        outdir=os.path.join(config["OutDir"],"{sample}","gene_mtx", "transformation"),
+        scriptdir=config["ScriptDir"]
+    resources:
+        mem_gb=200,
+        runtime_hr=10
+    shell:
+        """
+        python {params.scriptdir}/metrics_matrix.py {input.filtered_matrix_gz} {output.metrics};
+        python {params.scriptdir}/norm_sparse.py {input.filtered_matrix_gz} {params.outdir};
+        rm -f {params.outdir}/*mtx.gz;
+        gzip {params.outdir}/*mtx;
+        python {params.scriptdir}/metrics_methods_sparse.py {input.filtered_matrix_gz} {params.outdir}/pf_log_pf.mtx.gz {output.metrics};
+        ln -s {params.outdir}/*.mtx.gz {params.outdir}/matrix/matrix.mtx.gz;
+        cp {input.filtered_gene_gz} {params.outdir}/matrix/;
+        cp {input.filtered_barcode_gz} {params.outdir}/matrix/;
+        """
+
+rule updateSeuratObject:
+    input:
+        inputSeurat=getInputObject,
+        transformed_mtx=os.path.join(config["OutDir"],"{sample}", "gene_mtx", "transformation", "matrix", "matrix.mtx.gz")
+    output:
+        outRDS=os.path.join(config["OutDir"],"{sample}", "{sample}.pflogpf.RDS"),
+    conda:
+        config["env"]["trajectory"]
+    params:
+        scriptdir=config["ScriptDir"],
+        transformed_mtx = os.path.join(config["OutDir"],"{sample}", "gene_mtx", "transformation", "matrix"),
+        outdir= os.path.join(config["OutDir"],"{sample}"),
+	    sex_genes=config["SexGeneList"], 
+        sample="{sample}"
+    resources:
+        mem_gb=200,
+        runtime_hr=10
+    shell:
+        """
+        Rscript {params.scriptdir}/updateSeurat.R \
+            --inputSeuratObject {input.inputSeurat} \
+            --transformed_mtx {params.transformed_mtx} \
+            --outdir {params.outdir} \
+            --sample {params.sample} \
+            --sex_genes {params.sex_genes}
+        """
+
+rule runTrajectory:
+    input:
+        inputRDS=getRDS,
+    output:
+        slingshotRDS=os.path.join(config["OutDir"],"{sample}", "{sample}_slingshot.RDS"),
+        slingshotPDF=os.path.join(config["OutDir"],"{sample}", "{sample}_UMAP.trajectory.pdf"),
+        box_plot_PDF=os.path.join(config["OutDir"],"{sample}", "{sample}_boxplot.pseudotime.annot.pdf"),
+        LineageTable=os.path.join(config["OutDir"],"{sample}", "{sample}_slingshot.tsv")
+    conda:
+        config["env"]["trajectory"]
+    params:
+        scriptdir=config["ScriptDir"],
+        outdir= os.path.join(config["OutDir"],"{sample}"),
+        sample="{sample}",
+        sample_info=config["SampleInfoTable"]
+    resources:
+        mem_gb=16,
+        runtime_hr=10
+    shell:
+        """
+        Rscript {params.scriptdir}/runTrajectory.R \
+            --inputSeuratObject {input.inputRDS} \
+            --outdir {params.outdir} \
+            --sample {params.sample} \
+            --sampleInfo {params.sample_info}
+        """
+
+rule correlateWithGEP:
+    input:
+        LineageTable=os.path.join(config["OutDir"],"{sample}", "{sample}_slingshot.tsv"),
+        GEP=getGEP
+    output:
+        correlation_table=os.path.join(config["OutDir"],"{sample}","pseudotime_correlation.tsv")
+    params:
+        scriptdir=config["ScriptDir"],
+        sample="{sample}",
+        outdir= os.path.join(config["OutDir"],"{sample}"),
+        sample_info=config["SampleInfoTable"]
+    conda:
+        config["env"]["trajectory"]
+    resources:
+        mem_gb=16,
+        runtime_hr=10
+    shell:
+        """
+            Rscript {params.scriptdir}/runCorrelation.R \
+                --LineageTable {input.LineageTable} \
+                --GEP_table {input.GEP} \
+                --outdir {params.outdir} \
+                --sampleInfo {params.sample_info}
+        """
+
+rule evaluateK:
+    input:
+        slingshotRDS=os.path.join(config["OutDir"],"{sample}", "{sample}_slingshot.RDS"),
+    output:
+        touch(os.path.join(config["OutDir"],"{sample}", "logs", "evaluateK_complete.tsv"))
+    params:
+        scriptdir=config["ScriptDir"],
+        sample="{sample}",
+        outdir= os.path.join(config["OutDir"],"{sample}")
+    resources:
+        Thread=4,
+        mem_gb=32,
+        runtime_hr=10
+    conda:
+        config["env"]["trajectory"]
+    shell:
+        """
+            Rscript {params.scriptdir}/runEvaluateK.R \
+                --sce_object {input.slingshotRDS} \
+                --outdir {params.outdir} \
+                --celltype {params.sample}
+        """
+
+rule plot_K:
+    input:
+        os.path.join(config["OutDir"],"{sample}", "logs", "evaluateK_complete.tsv")
+    output:
+        touch(os.path.join(config["OutDir"],"{sample}", "logs", "tradeSeq_evaluateK_plots_{sample}_complete.tsv"))
+    params:
+        scriptdir=config["ScriptDir"],
+        sample="{sample}",
+        outdir= os.path.join(config["OutDir"],"{sample}")
+    resources:      
+        mem_gb=8,
+        runtime_hr=1
+    conda:
+        config["env"]["trajectory"]
+    shell:
+        """
+            Rscript {params.scriptdir}/plot_K.R \
+                --celltype {params.sample} \
+                --outdir {params.outdir}
+        """
