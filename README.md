@@ -66,6 +66,9 @@ The snakemake pipelines were designed to run on [Sherlock](https://www.sherlock.
 ## Assessing enrichment of genes associated with valve traits in VIC program 27 
   ### VIC_27_enrichment
 
+## VIC trajectory and gene association analyses
+  ### trajectory_snakemake
+
 
 
 
