@@ -7,7 +7,7 @@ The snakemake pipelines were designed to run on [Sherlock](https://www.sherlock.
   envs/R.yml
 
 ## scRNA-seq alignment and background removal and Sample demultiplexing
-  ### RNA_alignment_snakemake
+  ### RNA_alignment_Snakemake
   The code for aligning the scRNA portion of single cell multiomic sequencing to a reference assembly using [Starsolo](https://github.com/alexdobin/STAR/blob/master/docs/STARsolo.md) and demultiplexing samples using [Souporcell](https://github.com/wheaton5/souporcell). The input sample table requires information about the location of FASTQ files, the corresponding library name as found in the filenames, and the number of samples pooled in the library.
   ### CellBender_Snakemake 
   The code for removing ambient RNA (background) using CellBender. 
@@ -67,7 +67,8 @@ The snakemake pipelines were designed to run on [Sherlock](https://www.sherlock.
   ### VIC_27_enrichment
 
 ## VIC trajectory and gene association analyses
-  ### trajectory_snakemake
+  ### trajectory_Snakemake
+  The code operates in two phases. Phase 1 involves constructing developmental trajectories, identifying key lineages, linking them to gene programs, and grid-searching the number of knots for the NB-GAM fit. After a manual selection process, Phase 2 uses the optimized parameters to test the association between gene expression and development.
 
 
 
