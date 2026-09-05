@@ -39,7 +39,7 @@ Endocardial_VentricularEC_3	60859627	TRUE	TRUE	Endocardial_endothelial	Endocardi
 Endocardial_AtrialEC	19501055	TRUE	TRUE	Endocardial_endothelial	EndocardialCells	#00FF00	5	4	38	Endocardial_cells_4	#00FF00	TRUE	TRUE	Endocardial	#FFB3FC	TRUE	TRUE	TRUE
 Endocardial_AtrialSeptumEC_endocardial	6287045	TRUE	TRUE	Endocardial_endothelial	EndocardialCells	#00FF00	5	5	39	Atrial_septal_endocardial_cells	#228B22	TRUE	TRUE	Endocardial	#FFB3FC	TRUE	TRUE	TRUE
 Endocardial_IFT_VEC	24232006	TRUE	TRUE	Endocardial_endothelial	EndocardialCells	#00FF00	5	6	40	IF_valvular_endocardial_cells	#96DED1	TRUE	TRUE	Endocardial	#FFB3FC	TRUE	TRUE	TRUE
-Endocardial_to_endothelial	5491716	TRUE	TRUE	Endocardial_endothelial	EndocardialCells	#00FF00	5	6	42	Endocardial_to_endothelial_transtition	#813695	TRUE	TRUE	Endocardial	#FFB3FC	TRUE	TRUE	TRUE
+Endocardial_to_endothelial	5491716	TRUE	TRUE	Endocardial_endothelial	EndocardialCells	#00FF00	5	6	42	Endocardial_to_endothelial_transition	#813695	TRUE	TRUE	Endocardial	#FFB3FC	TRUE	TRUE	TRUE
 Endocardial_OFT_VEC	32853377	TRUE	TRUE	Endocardial_endothelial	EndocardialCells	#00FF00	5	7	41	OF_valvular_endocardial_cells	#FFFF00	TRUE	TRUE	Endocardial	#FFB3FC	TRUE	TRUE	TRUE
 Endocaridal_AorticEC_endothelial	7972253	TRUE	TRUE	Endocardial_endothelial	EndocardialCells	#00FF00	5	9	49	Aortic_endothelial_cells_1	#A67202	TRUE	TRUE	Endothelial	#93E9BE	TRUE	TRUE	TRUE
 Endocardial_cellcycle	20381250	TRUE	FALSE	Endocardial_endothelial	EndocardialCells	#00FF00	5	10	52	Endocardial_cell_cycling	#DFB9EE	TRUE	FALSE			FALSE	TRUE	TRUE
@@ -47,7 +47,7 @@ Endothelial_CapEC_endo	28701175	TRUE	TRUE	Endocardial_endothelial	EndothelialCel
 Endothelial_CapEC_SV	22230918	TRUE	TRUE	Endocardial_endothelial	EndothelialCells	#FF7F00	6	1	44	Capillary_endothelial_cells_1	#00CED1	TRUE	TRUE	Endothelial	#93E9BE	TRUE	TRUE	TRUE
 Endothelial_ArtEC_preArtery_2	8218072	TRUE	TRUE	Endocardial_endothelial	EndothelialCells	#FF7F00	6	3	46	Pre_arterial_endothelial_cells_1	#228B22	TRUE	TRUE	Endothelial	#93E9BE	TRUE	TRUE	TRUE
 Endothelial_ArtEC_preArtery_1	9561743	TRUE	TRUE	Endocardial_endothelial	EndothelialCells	#FF7F00	6	4	47	Pre_arterial_endothelial_cells_2	#8B8B02	TRUE	TRUE	Endothelial	#93E9BE	TRUE	TRUE	TRUE
-Endothelial_ArtEC_mature	11608339	TRUE	TRUE	Endocardial_endothelial	EndothelialCells	#FF7F00	6	5	48	Mature_arterial_endothelial	#FFA1D3	TRUE	TRUE	Endothelial	#93E9BE	TRUE	TRUE	TRUE
+Endothelial_ArtEC_mature	11608339	TRUE	TRUE	Endocardial_endothelial	EndothelialCells	#FF7F00	6	5	48	Mature_arterial_endothelial_cells	#FFA1D3	TRUE	TRUE	Endothelial	#93E9BE	TRUE	TRUE	TRUE
 Endothelial_AorticEC_endothelial	2430479	FALSE	FALSE	Endocardial_endothelial	EndothelialCells	#FF7F00	6	6	50	Aortic_endothelial_cells_2	#FF7F00	TRUE	TRUE	Endothelial	#93E9BE	FALSE	TRUE	TRUE
 Endothelial_VeinEC	8121080	TRUE	TRUE	Endocardial_endothelial	EndothelialCells	#FF7F00	6	7	43	Venous_endothelial_cells	#B666D2	TRUE	TRUE	Endothelial	#93E9BE	TRUE	TRUE	TRUE
 Endothelial_LymphaticEC	9201969	TRUE	TRUE	Lymphatic_EC	EndothelialCells	#FF7F00	6	8	55	Lymphatic_endothelial_cells	#4682B4	TRUE	TRUE	Endothelial	#93E9BE	TRUE	TRUE	TRUE
