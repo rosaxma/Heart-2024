@@ -250,7 +250,7 @@ rule combine_results:
 		combined_enrichment_mtx_2=os.path.join(config['project_home'], output_dir, "combined_results_table", "combined_LDSC_enrichment_below1_or_insig_set_to_1.mtx"),
 		combined_zscore_mtx=os.path.join(config['project_home'], output_dir, "combined_results_table", "combined_LDSC_zscore.mtx"),
 		combined_logP_mtx=os.path.join(config['project_home'], output_dir, "combined_results_table", "combined_LDSC_logP.mtx"),
-		combined_FDR_P_mtx=os.path.join(config['project_home'], output_dir, "combined_results_table", "combined_LDSC_FDR_P.mtx")
+		combined_bonferroni_P_mtx=os.path.join(config['project_home'], output_dir, "combined_results_table", "combined_LDSC_bonferroni_P.mtx")
 	conda:
 		config["env"]["r_yml"]
 	resources:
@@ -272,7 +272,7 @@ rule combine_results:
 rule plot_heatmap_filtered:
 	input:
 		ldsc_results=[os.path.join(config['project_home'], output_dir, "combined_results_table", "combined_LDSC_enrichment_below1_set_to_1.mtx"),os.path.join(config['project_home'], output_dir, "combined_results_table", "combined_LDSC_enrichment_below1_or_insig_set_to_1.mtx"), os.path.join(config['project_home'], output_dir, "combined_results_table", "combined_LDSC_zscore.mtx"), os.path.join(config['project_home'], output_dir, "combined_results_table", "combined_LDSC_logP.mtx")],
-		combined_FDR_P_mtx=os.path.join(config['project_home'], output_dir, "combined_results_table", "combined_LDSC_FDR_P.mtx")
+		combined_bonferroni_P_mtx=os.path.join(config['project_home'], output_dir, "combined_results_table", "combined_LDSC_bonferroni_P.mtx")
 	params:
 		ldsc_results=",".join([os.path.join(config['project_home'], output_dir, "combined_results_table", "combined_LDSC_enrichment_below1_set_to_1.mtx"),os.path.join(config['project_home'], output_dir,"combined_results_table", "combined_LDSC_enrichment_below1_or_insig_set_to_1.mtx"), os.path.join(config['project_home'], output_dir, "combined_results_table", "combined_LDSC_zscore.mtx"), os.path.join(config['project_home'], output_dir, "combined_results_table", "combined_LDSC_logP.mtx")]),
 		scripts_dir = config['scripts_dir'],
@@ -291,7 +291,7 @@ rule plot_heatmap_filtered:
 				--outdir {params.outdir} \
 				--mtx {params.ldsc_results} \
 				--annotation {params.annotation} \
-				--p_value {input.combined_FDR_P_mtx} \
+				--p_value {input.combined_bonferroni_P_mtx} \
 				--infoSheet {params.infoSheet}
 		"""
 		

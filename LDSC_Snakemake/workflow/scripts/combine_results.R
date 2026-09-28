@@ -33,8 +33,8 @@ for (i in 1:length(traits)){
     trait=traits[[i]]
     result_path=file.path(opt$results_dir, paste0(trait, ".results"))
     result_df=read.table(result_path, header=T, sep="\t", stringsAsFactors=F)
-    result_df$Enrichment_p_fdr <- round(p.adjust(result_df$Enrichment_p, "bonferroni"),3)
-    results_df_full_table=result_df %>% select(Category, Enrichment, Enrichment_std_error, Enrichment_p, Enrichment_p_fdr, Coefficient_z.score) %>% mutate(Category=str_replace(Category, "L2_0", "")) %>% filter(Category %in% celltypes) %>% mutate(DZ=trait) %>% inner_join(sumstats_table, by=c("DZ")) %>% rename(finemapped_trait=Disease)	%>% left_join(lead_variant_count, by=c("finemapped_trait"="trait"))
+    result_df$Enrichment_p_bonferroni <- round(p.adjust(result_df$Enrichment_p, "bonferroni"),3)
+    results_df_full_table=result_df %>% select(Category, Enrichment, Enrichment_std_error, Enrichment_p, Enrichment_p_bonferroni, Coefficient_z.score) %>% mutate(Category=str_replace(Category, "L2_0", "")) %>% filter(Category %in% celltypes) %>% mutate(DZ=trait) %>% inner_join(sumstats_table, by=c("DZ")) %>% rename(finemapped_trait=Disease)	%>% left_join(lead_variant_count, by=c("finemapped_trait"="trait"))
     df_full_list[[i]]=results_df_full_table
     
     results_df_subset=results_df_full_table %>% filter(Enrichment>1, Enrichment_p < 0.05) %>% inner_join(sumstats_table, by=c("DZ"))  %>% select(-DZ)
@@ -43,16 +43,16 @@ for (i in 1:length(traits)){
 
     results_enrichment_subset_v1=result_df %>% select(Category, Enrichment, Enrichment_p) %>% mutate(Category=str_replace(Category, "L2_0", "")) %>% filter(Category %in% celltypes) %>% mutate(DZ=trait) %>% inner_join(sumstats_table, by=c("DZ")) %>% rename(finemapped_trait=Disease) %>% select(-DZ) %>% mutate(Enrichment=ifelse(Enrichment<1,1, Enrichment)) %>% select(-c(Enrichment_p))
 
-    results_enrichment_subset_v2=result_df %>% select(Category, Enrichment, Enrichment_p_fdr) %>% mutate(Category=str_replace(Category, "L2_0", "")) %>% filter(Category %in% celltypes) %>% mutate(DZ=trait) %>% inner_join(sumstats_table, by=c("DZ")) %>% rename(finemapped_trait=Disease) %>% select(-DZ) %>% mutate(Enrichment=ifelse(Enrichment<1 |Enrichment_p_fdr>=0.05,1, Enrichment)) %>% select(-c(Enrichment_p_fdr))
+    results_enrichment_subset_v2=result_df %>% select(Category, Enrichment, Enrichment_p_bonferroni) %>% mutate(Category=str_replace(Category, "L2_0", "")) %>% filter(Category %in% celltypes) %>% mutate(DZ=trait) %>% inner_join(sumstats_table, by=c("DZ")) %>% rename(finemapped_trait=Disease) %>% select(-DZ) %>% mutate(Enrichment=ifelse(Enrichment<1 |Enrichment_p_bonferroni>=0.05,1, Enrichment)) %>% select(-c(Enrichment_p_bonferroni))
     
-    results_enrichment_subset_v3=result_df %>% select(Category, Enrichment, Enrichment_p_fdr) %>% mutate(Category=str_replace(Category, "L2_0", "")) %>% filter(Category %in% celltypes) %>% mutate(DZ=trait) %>% inner_join(sumstats_table, by=c("DZ")) %>% rename(finemapped_trait=Disease) %>% select(-DZ) %>% select(-c(Enrichment_p_fdr))
+    results_enrichment_subset_v3=result_df %>% select(Category, Enrichment, Enrichment_p_bonferroni) %>% mutate(Category=str_replace(Category, "L2_0", "")) %>% filter(Category %in% celltypes) %>% mutate(DZ=trait) %>% inner_join(sumstats_table, by=c("DZ")) %>% rename(finemapped_trait=Disease) %>% select(-DZ) %>% select(-c(Enrichment_p_bonferroni))
 
     results_zscore_subset=result_df %>% select(Category, Coefficient_z.score) %>% mutate(Category=str_replace(Category, "L2_0", "")) %>% filter(Category %in% celltypes) %>% mutate(DZ=trait) %>% inner_join(sumstats_table, by=c("DZ")) %>% rename(finemapped_trait=Disease) %>% select(-DZ)
 
     results_logP_subset=result_df %>% select(Category, Enrichment_p) %>% mutate(Category=str_replace(Category, "L2_0", "")) %>% filter(Category %in% celltypes) %>% mutate(DZ=trait) %>% inner_join(sumstats_table, by=c("DZ")) %>% rename(finemapped_trait=Disease) %>% select(-DZ) %>% mutate(logP=-log10(Enrichment_p)) %>% select(-Enrichment_p)
 
     
-    results_P_subset=result_df %>% select(Category, Enrichment_p_fdr) %>% mutate(Category=str_replace(Category, "L2_0", "")) %>% filter(Category %in% celltypes) %>% mutate(DZ=trait) %>% inner_join(sumstats_table, by=c("DZ")) %>% rename(finemapped_trait=Disease) %>% select(-DZ) 
+    results_P_subset=result_df %>% select(Category, Enrichment_p_bonferroni) %>% mutate(Category=str_replace(Category, "L2_0", "")) %>% filter(Category %in% celltypes) %>% mutate(DZ=trait) %>% inner_join(sumstats_table, by=c("DZ")) %>% rename(finemapped_trait=Disease) %>% select(-DZ) 
 
     df_full_enrichment_v1_list[[i]]=results_enrichment_subset_v1
     df_full_enrichment_v2_list[[i]]=results_enrichment_subset_v2
@@ -69,10 +69,10 @@ combined_df_full <- do.call("rbind", df_full_list) %>% left_join(infoSheet, by=c
 
 
 if (is.na(opt$leadSNPCount)){
-    robust_traits=combined_df %>% filter(Enrichment_p_fdr<0.05) %>% pull(finemapped_trait) %>% unique()
+    robust_traits=combined_df %>% filter(Enrichment_p_bonferroni<0.05) %>% pull(finemapped_trait) %>% unique()
     print(robust_traits)
 } else {
-    robust_traits=combined_df %>% filter(Enrichment_p_fdr<0.05, finemapped_trait %in% sufficient_variants) %>% pull(finemapped_trait) %>% unique()
+    robust_traits=combined_df %>% filter(Enrichment_p_bonferroni<0.05, finemapped_trait %in% sufficient_variants) %>% pull(finemapped_trait) %>% unique()
     print(robust_traits)
 }
 
@@ -82,14 +82,14 @@ combined_enrichment_v2_mtx <- do.call("rbind", df_full_enrichment_v2_list) %>% f
 combined_enrichment_v3_mtx <- do.call("rbind", df_full_enrichment_v3_list) %>% filter(finemapped_trait %in% robust_traits ) %>% pivot_wider(names_from=finemapped_trait, values_from=Enrichment)
 combined_zscore_mtx <- do.call("rbind", df_full_zscore_list) %>% filter(finemapped_trait %in% robust_traits ) %>% pivot_wider(names_from=finemapped_trait, values_from=Coefficient_z.score)
 combined_logP_mtx <- do.call("rbind", df_full_logP_list) %>% filter(finemapped_trait %in% robust_traits ) %>% pivot_wider(names_from=finemapped_trait, values_from=logP)
-combined_P_mtx <- do.call("rbind", df_full_P_list) %>% filter(finemapped_trait %in% robust_traits) %>% pivot_wider(names_from=finemapped_trait, values_from=Enrichment_p_fdr)
+combined_P_mtx <- do.call("rbind", df_full_P_list) %>% filter(finemapped_trait %in% robust_traits) %>% pivot_wider(names_from=finemapped_trait, values_from=Enrichment_p_bonferroni)
 
 write.table(combined_df_full, file.path(opt$outdir, "combined_LDSC_enrichment_unfiltered.tsv"), sep="\t", row.names=F, quote=F)
 write.table(combined_df, file.path(opt$outdir, "combined_LDSC_enrichment.tsv"), sep="\t", row.names=F, quote=F)
-write.table(combined_df %>% filter(Enrichment_p_fdr<0.05), file.path(opt$outdir, "combined_LDSC_enrichment_fdr_filtered.tsv"), sep="\t", row.names=F, quote=F)
+write.table(combined_df %>% filter(Enrichment_p_bonferroni<0.05), file.path(opt$outdir, "combined_LDSC_enrichment_bonferroni_filtered.tsv"), sep="\t", row.names=F, quote=F)
 write.table(combined_enrichment_v1_mtx, file.path(opt$outdir, "combined_LDSC_enrichment_below1_set_to_1.mtx"), sep="\t", row.names=F, quote=F)
 write.table(combined_enrichment_v2_mtx, file.path(opt$outdir, "combined_LDSC_enrichment_below1_or_insig_set_to_1.mtx"), sep="\t", row.names=F, quote=F)
 write.table(combined_enrichment_v3_mtx, file.path(opt$outdir, "combined_LDSC_enrichment.mtx"), sep="\t", row.names=F, quote=F)
 write.table(combined_zscore_mtx,file.path(opt$outdir, "combined_LDSC_zscore.mtx"), sep="\t", row.names=F, quote=F)
 write.table(combined_logP_mtx, file.path(opt$outdir, "combined_LDSC_logP.mtx"), sep="\t", row.names=F, quote=F) 
-write.table(combined_P_mtx, file.path(opt$outdir, "combined_LDSC_FDR_P.mtx"), sep="\t", row.names=F, quote=F) 
+write.table(combined_P_mtx, file.path(opt$outdir, "combined_LDSC_bonferroni_P.mtx"), sep="\t", row.names=F, quote=F) 

@@ -19,8 +19,8 @@ set.seed(42)
 mtx_list=unlist(strsplit(opt$mtx, ","))
 annotation <- read.table(opt$annotation, header=T, sep="\t", stringsAsFactors=F) %>% select(celltype, plot_label) %>% distinct()
 infoSheet <- read.table(opt$infoSheet, header=T, sep="\t", stringsAsFactors=F) %>% select(Trait, NiceName, DataGroup, Property, EnhancerRelevance, Source)
-mat_fdr <- read.table(opt$p_value, header=T, sep="\t", stringsAsFactors=F) %>% column_to_rownames(var="Category") %>% t()
-print(head(mat_fdr))
+mat_bonferroni <- read.table(opt$p_value, header=T, sep="\t", stringsAsFactors=F) %>% column_to_rownames(var="Category") %>% t()
+print(head(mat_bonferroni))
 for (mtx in mtx_list){
         all_df <- read.table(mtx, header=T, sep="\t", stringsAsFactors=F) 
         all_df <- all_df %>% column_to_rownames(var="Category")
@@ -51,11 +51,11 @@ for (mtx in mtx_list){
                 col_fun=colorRamp2(c(0, quantile_high), c("white", "#A50026"))  
         }
         print(head(mat))
-        for (i in (rownames(mat_fdr))) {
-              for (j in (colnames(mat_fdr))) {
+        for (i in (rownames(mat_bonferroni))) {
+              for (j in (colnames(mat_bonferroni))) {
                                 print(i)
                                 print(j)
-                                 if(mat_fdr[i, j] < 0.001 ) {
+                                 if(mat_bonferroni[i, j] < 0.001 ) {
                                         print("*")
                                  }
               }
@@ -77,11 +77,11 @@ for (mtx in mtx_list){
                 row_dend_width=unit(30, "mm"),
                 column_dend_height=unit(30, "mm"),
                 cell_fun = function(j, i, x, y, w, h, fill) {
-                        if(mat_fdr[i, j] < 0.001 ) {
+                        if(mat_bonferroni[i, j] < 0.001 ) {
                                 grid.text("***", x, y)
-                        } else if(mat_fdr[i, j] < 0.01) {
+                        } else if(mat_bonferroni[i, j] < 0.01) {
                 grid.text("**", x, y)
-                } else if (mat_fdr[i, j] < 0.05) {
+                } else if (mat_bonferroni[i, j] < 0.05) {
                 grid.text("*", x, y)
                 }
         })
