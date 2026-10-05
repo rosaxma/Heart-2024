@@ -1,0 +1,15 @@
+# Pinned to the environment this figure was actually run in.
+#
+# make_figure.py and build_lotto_endmt_table.py need only numpy, pandas and
+# matplotlib (>= 3.10). anndata and scipy are for the two optional table
+# rebuilds, build_cranley_vic_tables.py and build_fhm_vic_by_pcw_table.py.
+name: vic_chd_devexpr
+channels:
+  - conda-forge
+dependencies:
+  - python=3.10.19
+  - numpy=2.2.6
+  - pandas=2.3.3
+  - matplotlib=3.10.8
+  - scipy=1.15.3
+  - anndata=0.11.4

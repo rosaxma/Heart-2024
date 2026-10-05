@@ -1,0 +1,13 @@
+sample,genotype,treatment
+1-NT1,NT,none
+2-NT2a,NT,none
+3-NT2b,NT,none
+4-NTW1,NT,Wnt
+5-NTW2a,NT,Wnt
+6-NTW2b,NT,Wnt
+7-M1,MEIS2,none
+8-M2a,MEIS2,none
+9-M2b,MEIS2,none
+10-MW1,MEIS2,Wnt
+11-MW2a,MEIS2,Wnt
+12-MW2b,MEIS2,Wnt
