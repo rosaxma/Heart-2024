@@ -1,0 +1,22 @@
+# Pinned to the environment this analysis was actually run in.
+#
+# N_CPUS in the script is a reproducibility setting, not just a speed knob:
+# pydeseq2's parallel dispersion fitting is not bit-identical across worker
+# counts. Pinning the package versions without also fixing N_CPUS is not enough
+# to reproduce the exact padj values.
+name: deseq2
+channels:
+  - conda-forge
+  - bioconda
+dependencies:
+  - python=3.12.13
+  - pandas=3.0.5
+  - numpy=2.5.2
+  - scipy=1.18.0
+  - scikit-learn=1.9.0
+  - matplotlib=3.10.9
+  - seaborn=0.13.2
+  - pip
+  - pip:
+      - pydeseq2==0.5.4
+      - adjustText==1.4.0

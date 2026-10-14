@@ -1,0 +1,15 @@
+sublibrary	sample_id	sample_type	counts_file	min_umi_threshold	max_umi_threshold	exclude
+sublib1	300k:gex_sublib1	gex	sublib1_gex_adata.h5ad	1921	75000	False
+sublib1	300k:guide_sublib1	guide	sublib1_guide_adata.h5ad			False
+sublib2	300k:gex_sublib2	gex	sublib2_gex_adata.h5ad	2414	75000	False
+sublib2	300k:guide_sublib2	guide	sublib2_guide_adata.h5ad			False
+sublib3	300k:gex_sublib3	gex	sublib3_gex_adata.h5ad	2006	75000	False
+sublib3	300k:guide_sublib3	guide	sublib3_guide_adata.h5ad			False
+sublib4	300k:gex_sublib4	gex	sublib4_gex_adata.h5ad	2345	75000	False
+sublib4	300k:guide_sublib4	guide	sublib4_guide_adata.h5ad			False
+sublib5	300k:gex_sublib5	gex	sublib5_gex_adata.h5ad	3132	75000	False
+sublib5	300k:guide_sublib5	guide	sublib5_guide_adata.h5ad			False
+sublib6	300k:gex_sublib6	gex	sublib6_gex_adata.h5ad	2925	75000	False
+sublib6	300k:guide_sublib6	guide	sublib6_guide_adata.h5ad			False
+sublib7	300k:gex_sublib7	gex	sublib7_gex_adata.h5ad	1719	75000	False
+sublib7	300k:guide_sublib7	guide	sublib7_guide_adata.h5ad			False
